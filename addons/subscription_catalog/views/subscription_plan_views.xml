@@ -51,6 +51,15 @@
                             <field name="company_id" groups="base.group_multi_company"/>
                         </group>
                     </group>
+                    <group string="Pause &amp; Closure Settings" name="pause_settings">
+                        <group>
+                            <field name="allow_pause"/>
+                            <field name="allow_early_closure"/>
+                        </group>
+                        <group>
+                            <field name="pause_billing_policy" invisible="not allow_pause"/>
+                        </group>
+                    </group>
                     <notebook>
                         <page string="Internal Notes" name="notes_page">
                             <field name="notes" placeholder="Plan terms, operational restrictions, and SLA details..."/>
