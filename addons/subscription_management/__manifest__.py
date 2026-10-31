@@ -30,6 +30,7 @@ tax calculations, discount application, and quotation lifecycle:
         'security/ir.model.access.csv',
         'data/ir_sequence_data.xml',
         'data/ir_cron_data.xml',
+        'data/ir_cron_renewal.xml',
         'views/subscription_views.xml',
     ],
     'demo': [

@@ -24,6 +24,8 @@
                 <field name="date_expiration" string="Quotation Expiry Date" optional="show"/>
                 <field name="date_start" string="Start Date" optional="show"/>
                 <field name="date_subscription_end" string="Sub. Expiry Date" optional="show"/>
+                <field name="date_last_renewal" string="Last Renewed" optional="show"/>
+                <field name="renewal_count" string="Renewals" optional="show"/>
                 <field name="payment_term_id" string="Payment Terms" optional="hide"/>
                 <field name="quotation_id" string="Original Quotation" optional="hide"/>
                 <field name="expiration_status" widget="badge"
@@ -92,6 +94,11 @@
                             type="object"
                             class="btn-danger"
                             invisible="state != 'active'"/>
+                    <button name="action_renew"
+                            string="Renew"
+                            type="object"
+                            class="oe_highlight"
+                            invisible="state not in ('active', 'paused') or not plan_id"/>
                     <field name="state" widget="statusbar" statusbar_visible="draft,quotation,confirmed,active,paused,closed"/>
                 </header>
                 <sheet>
@@ -152,6 +159,18 @@
                             <field name="next_billing_date" readonly="1" invisible="state in ('draft', 'quotation')"/>
                             <field name="company_id" groups="base.group_multi_company"/>
                             <field name="currency_id" invisible="1"/>
+                        </group>
+                    </group>
+
+                    <!-- Renewal Information -->
+                    <group name="renewal_info" string="Renewal Information"
+                           invisible="not date_last_renewal and renewal_count == 0">
+                        <group>
+                            <field name="date_last_renewal" readonly="1"/>
+                            <field name="renewal_count" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="last_renewal_period_end" readonly="1"/>
                         </group>
                     </group>
 
@@ -236,6 +255,26 @@
                                 </tree>
                             </field>
                         </page>
+                        <page string="Renewal History" name="renewal_history_page"
+                              invisible="not renewal_history_ids">
+                            <field name="renewal_history_ids" create="0" edit="0" delete="0">
+                                <tree string="Renewal History" default_order="renewal_date desc, id desc">
+                                    <field name="renewal_date" string="Date"/>
+                                    <field name="renewal_type" string="Type" widget="badge"
+                                           decoration-info="renewal_type == 'manual'"
+                                           decoration-success="renewal_type == 'automatic'"/>
+                                    <field name="renewal_result" string="Result" widget="badge"
+                                           decoration-success="renewal_result == 'success'"
+                                           decoration-danger="renewal_result == 'failed'"/>
+                                    <field name="prev_subscription_end" string="Prev. Expiry"/>
+                                    <field name="new_subscription_end" string="New Expiry"/>
+                                    <field name="prev_next_billing_date" string="Prev. Billing"/>
+                                    <field name="new_next_billing_date" string="New Billing"/>
+                                    <field name="user_id" string="By"/>
+                                    <field name="notes" string="Notes" optional="show"/>
+                                </tree>
+                            </field>
+                        </page>
                     </notebook>
                 </sheet>
                 <!-- Chatter & Activity Mixin -->
@@ -272,6 +311,11 @@
                 <filter string="Ready for Conversion" name="filter_ready_conversion" domain="[('state', '=', 'confirmed'), ('is_converted', '=', False)]"/>
                 <filter string="Converted to Subscription" name="filter_converted" domain="[('is_converted', '=', True)]"/>
                 <filter string="Active Subscriptions" name="filter_active" domain="[('state', '=', 'active')]"/>
+                <filter string="Paused Subscriptions" name="filter_paused" domain="[('state', '=', 'paused')]"/>
+                <filter string="Expiring Soon (Subscription)" name="filter_sub_expiring"
+                        domain="[('state', '=', 'active'), ('date_subscription_end', '&lt;=', (context_today() + datetime.timedelta(days=30)).strftime('%Y-%m-%d'))]"/>
+                <filter string="Renewed" name="filter_renewed" domain="[('renewal_count', '&gt;', 0)]"/>
+                <filter string="Auto-Renewal Enabled" name="filter_auto_renewal" domain="[('plan_id.auto_renewal', '=', True)]"/>
                 <filter string="Closed Subscriptions" name="filter_closed" domain="[('state', '=', 'closed')]"/>
                 <separator/>
                 <filter string="Expired Quotations" name="filter_expired"
