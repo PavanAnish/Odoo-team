@@ -30,12 +30,10 @@ class SubscriptionSubscription(models.Model):
     state = fields.Selection(
         selection=[
             ('draft', 'Draft'),
-            ('quotation', 'Quotation Sent'),
+            ('quotation', 'Quotation'),
             ('confirmed', 'Confirmed'),
             ('active', 'Active'),
-            ('paused', 'Paused'),
             ('closed', 'Closed'),
-            ('cancelled', 'Cancelled'),
         ],
         string='Status',
         required=True,
@@ -43,6 +41,22 @@ class SubscriptionSubscription(models.Model):
         tracking=True,
         copy=False,
     )
+    history_ids = fields.One2many(
+        'subscription.status.history',
+        'subscription_id',
+        string='Status History',
+        readonly=True,
+        help='Permanent audit trail of all status transitions for this subscription.'
+    )
+
+    # Strict business lifecycle transitions: Draft -> Quotation -> Confirmed -> Active -> Closed
+    VALID_STATE_TRANSITIONS = {
+        'draft': ['quotation'],
+        'quotation': ['confirmed'],
+        'confirmed': ['active'],
+        'active': ['closed'],
+        'closed': [],
+    }
 
     # --- Customer Information ---
     partner_id = fields.Many2one(
@@ -246,7 +260,7 @@ class SubscriptionSubscription(models.Model):
     # --- Access Control & Backend Security ---
     @api.model_create_multi
     def create(self, vals_list):
-        if not self.env.user.has_group('subscription_base.group_subscription_user'):
+        if not (self.env.user.has_group('subscription_base.group_subscription_user') or self.env.is_system() or self.env.su):
             raise AccessError(_("Access Denied: Only authorized internal staff can create subscription quotations."))
         for vals in vals_list:
             if vals.get('name', _('New')) == _('New'):
@@ -262,16 +276,52 @@ class SubscriptionSubscription(models.Model):
         for rec in records:
             rec._check_duplicate_reference()
             rec._validate_quotation_integrity()
+            # Record initial state audit history
+            self.env['subscription.status.history'].sudo().create({
+                'subscription_id': rec.id,
+                'previous_state': False,
+                'new_state': rec.state or 'draft',
+                'user_id': self.env.uid,
+                'change_date': fields.Datetime.now(),
+                'reason': _("Initial record creation in status '%s'") % (rec.state or 'draft').capitalize(),
+            })
         return records
 
     def write(self, vals):
-        if not self.env.user.has_group('subscription_base.group_subscription_user'):
+        if not (self.env.user.has_group('subscription_base.group_subscription_user') or self.env.is_system() or self.env.su):
             raise AccessError(_("Access Denied: Only authorized internal staff can edit subscription quotations."))
-        # Prevent editing locked / cancelled / closed records unless resetting or updating state
+
+        # Prevent editing locked / closed records unless updating notes
         for rec in self:
-            if rec.state in ('cancelled', 'closed') and not any(k in vals for k in ('state', 'notes')):
-                raise UserError(_("Cannot modify a cancelled or closed subscription record."))
+            if rec.state == 'closed' and not any(k in vals for k in ('state', 'notes')):
+                raise UserError(_("Cannot modify a closed subscription record."))
+
+        state_transitions = []
+        if 'state' in vals:
+            self._check_transition_permission()
+            new_state = vals['state']
+            for rec in self:
+                old_state = rec.state
+                if old_state != new_state:
+                    rec._validate_state_transition(old_state, new_state)
+                    state_transitions.append((rec, old_state, new_state))
+
         res = super().write(vals)
+
+        # Record audit history for each successful transition in the same transaction
+        for rec, old_state, new_state in state_transitions:
+            self.env['subscription.status.history'].sudo().create({
+                'subscription_id': rec.id,
+                'previous_state': old_state,
+                'new_state': new_state,
+                'user_id': self.env.uid,
+                'change_date': fields.Datetime.now(),
+                'reason': self.env.context.get('transition_reason') or _("Status transitioned from '%s' to '%s'") % (
+                    dict(self._fields['state'].selection).get(old_state, old_state),
+                    dict(self._fields['state'].selection).get(new_state, new_state),
+                ),
+            })
+
         for rec in self:
             rec._check_duplicate_reference()
             rec._validate_quotation_integrity()
@@ -352,6 +402,32 @@ class SubscriptionSubscription(models.Model):
                     raise ValidationError(_(
                         "Quotation '%s' has already been converted to another subscription."
                     ) % sub.quotation_id.name)
+
+    def _validate_state_transition(self, old_state, new_state):
+        """Validate whether the transition from old_state to new_state is allowed by business rules."""
+        self.ensure_one()
+        if old_state == new_state:
+            return True
+
+        allowed = self.VALID_STATE_TRANSITIONS.get(old_state, [])
+        if new_state not in allowed:
+            old_label = dict(self._fields['state'].selection).get(old_state, old_state)
+            new_label = dict(self._fields['state'].selection).get(new_state, new_state)
+            allowed_labels = [dict(self._fields['state'].selection).get(s, s) for s in allowed]
+            allowed_str = ', '.join(allowed_labels) if allowed_labels else _('None (Closed is terminal)')
+            raise ValidationError(_(
+                "Invalid status transition: Cannot transition subscription '%s' from '%s' to '%s'. "
+                "Allowed next status: %s."
+            ) % (self.name, old_label, new_label, allowed_str))
+        return True
+
+    def _check_transition_permission(self):
+        """Verify that the user is authorized to perform status changes."""
+        if self.env.is_system() or self.env.su:
+            return True
+        if not self.env.user.has_group('subscription_base.group_subscription_user'):
+            raise AccessError(_("Access Denied: Only authorized internal staff can modify subscription statuses."))
+        return True
 
     def _validate_quotation_integrity(self):
         """Comprehensive quotation validation covering customer, plan, dates, and quantities."""
