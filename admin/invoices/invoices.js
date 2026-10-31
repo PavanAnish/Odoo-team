@@ -15,24 +15,39 @@ export function invs() {
 
   return [
     `<button class="btn" onclick="runBilling()">+ Run billing (New Draft)</button>`,
-    `<div class="tabs">${T.map(t => `<button class="${S.tab === t ? 'on' : ''}" onclick="S.tab='${t}';R()">${t}</button>`).join('')}</div>${rows.length ? `<div class="card tp tw rt"><table><thead><tr><th>Invoice</th><th>Customer</th><th>Amount</th><th>Due</th><th>Status</th><th>Actions</th></tr></thead><tbody>${rows.map(i => `<tr class="r ${ds(i) === 'Overdue' ? 'ov' : ''}" onclick="S.inv=${i.id};R()"><td data-l="Invoice"><b>${i.n}</b> <small class="mut">auto</small></td><td data-l="Customer">${i.c}</td><td data-l="Amount">${M(i.amt)}</td><td data-l="Due">${i.due}${ds(i) === 'Overdue' ? ` <b class="dn">${dO(i)}d overdue</b>` : ''}</td><td data-l="Status">${B(ds(i))}</td><td style="white-space:nowrap">${
-      i.st === 'Draft' ? `<button class="btn o" onclick="event.stopPropagation();confirmInvoice(${i.id})">Confirm</button>` :
-      (i.st === 'Confirmed' || ds(i) === 'Overdue') ? `<button class="btn o" onclick="event.stopPropagation();pay(${i.id})">Record payment</button>` :
-      i.st === 'Paid' ? `<small class="mut">✓ Fully Paid</small>` :
-      `<small class="mut">Cancelled</small>`
-    }</td></tr>`).join('')}</tbody></table></div>` : '<div class="card empty"><b>No invoices</b>Nothing in this tab yet.</div>'}`
+    `<div class="tabs">${T.map(t => `<button class="${S.tab === t ? 'on' : ''}" onclick="S.tab='${t}';R()">${t}</button>`).join('')}</div>${rows.length ? `<div class="card tp tw rt"><table><thead><tr><th>Invoice</th><th>Customer</th><th>Total</th><th>Paid</th><th>Due</th><th>Status</th><th>Actions</th></tr></thead><tbody>${rows.map(i => {
+      const isOverdue = ds(i) === 'Overdue';
+      const paid = i.paid || (i.st === 'Paid' ? i.amt : 0);
+      const residual = i.residual !== undefined ? i.residual : (i.st === 'Paid' ? 0 : i.amt);
+      return `<tr class="r ${isOverdue ? 'ov' : ''}" onclick="S.inv=${i.id};R()">
+        <td data-l="Invoice"><b>${i.n}</b> <small class="mut">auto</small></td>
+        <td data-l="Customer">${i.c}</td>
+        <td data-l="Total">${M(i.amt)}</td>
+        <td data-l="Paid" class="${paid > 0 ? 'mut' : 'mut'}">${M(paid)}</td>
+        <td data-l="Due">${M(residual)}${isOverdue ? ` <b class="dn">${dO(i)}d overdue</b>` : ''}</td>
+        <td data-l="Status">${B(ds(i))}</td>
+        <td style="white-space:nowrap">${
+          i.st === 'Draft' ? `<button class="btn o" onclick="event.stopPropagation();confirmInvoice(${i.id})">Confirm</button>` :
+          (i.st === 'Confirmed' || isOverdue) ? `<button class="btn o" onclick="event.stopPropagation();pay(${i.id})">Record payment</button>` :
+          i.st === 'Paid' ? `<small class="mut">✓ Fully Paid</small>` :
+          `<small class="mut">Cancelled</small>`
+        }</td>
+      </tr>`;
+    }).join('')}</tbody></table></div>` : '<div class="card empty"><b>No invoices</b>Nothing in this tab yet.</div>'}`
   ];
 }
 
 export function runBilling() {
   const nextId = Math.max(0, ...D.invoices.map(i => i.id)) + 1;
   const customers = D.customers.filter(c => c.status === 'Active');
-  const cust = customers[nextId % customers.length] || { name: 'Acme Corp' };
+  const cust = customers[nextId % customers.length] || { name: 'Orbit Foods' };
   const newInv = {
     id: nextId,
     n: `INV-${2040 + nextId}`,
     c: cust.name,
     amt: 240,
+    paid: 0,
+    residual: 240,
     st: 'Draft',
     due: '2026-11-30',
     history: []
@@ -47,17 +62,15 @@ export function confirmInvoice(id) {
   const i = D.invoices.find(x => x.id === id);
   if (!i) return;
 
-  // Authorization check
   if (!currentUser.isAuthorized) {
     return toast('Access Denied: Only authorized billing staff can confirm invoices.');
   }
 
-  // Validate state
   if (i.st !== 'Draft') {
     return toast(`Invalid status transition: Only Draft invoices can be confirmed (current: ${i.st})`);
   }
 
-  confirmD(`Confirm invoice <b>${i.n}</b> for <b>${i.c}</b> (${M(i.amt)})?<br><small class="mut">Once confirmed, invoice is finalized and line items are locked awaiting payment.</small>`, () => {
+  confirmD(`Confirm invoice <b>${i.n}</b> for <b>${i.c}</b> (${M(i.amt)})?<br><small class="mut">Once confirmed, invoice is finalized and terms are locked awaiting payment.</small>`, () => {
     const prev = i.st;
     i.st = 'Confirmed';
     logInvoiceHistory(i, 'Confirmed', prev, 'Confirmed', 'Invoice finalized and awaiting payment.');
@@ -70,7 +83,6 @@ export function cancelInvoice(id) {
   const i = D.invoices.find(x => x.id === id);
   if (!i) return;
 
-  // Validate state
   if (i.st === 'Paid') {
     return toast('Cannot cancel a fully paid invoice. Payments must be reversed or refunded first.');
   }
@@ -107,7 +119,12 @@ export function pay(id) {
   const i = D.invoices.find(x => x.id === id);
   if (!i) return;
 
-  // Status validation
+  // Authorization check
+  if (!currentUser.isAuthorized) {
+    return toast('Access Denied: Only authorized billing staff can record payments.');
+  }
+
+  // Status check
   if (i.st === 'Draft') {
     return toast('Cannot record payment: Invoice is in Draft. Confirm the invoice first.');
   }
@@ -118,37 +135,151 @@ export function pay(id) {
     return toast('Invoice is already fully paid.');
   }
 
+  const currentResidual = i.residual !== undefined ? i.residual : (i.amt - (i.paid || 0));
+
   const o = modal(`
-<h2>Record payment · ${i.n}</h2>
-<p class="mut">Customer: <b>${i.c}</b> · Total due: <b>${M(i.amt)}</b></p>
-<label>Payment Amount</label>
-<input id="pa" type="number" step="0.01" value="${i.amt}">
-<label>Payment Method</label>
-<select id="pm"><option>Bank transfer</option><option>Credit Card</option><option>Cash</option><option>Direct Debit</option></select>
-<label>Payment Date</label>
+<h2>Record Payment · ${i.n}</h2>
+<p class="mut">Customer: <b>${i.c}</b> · Total: <b>${M(i.amt)}</b> · Remaining Balance: <b style="color:var(--c,#0f766e)">${M(currentResidual)}</b></p>
+
+<label for="pa">Payment Amount ($)</label>
+<input id="pa" type="number" step="0.01" min="0.01" max="${currentResidual}" value="${currentResidual}" required>
+
+<label for="pm">Payment Method</label>
+<select id="pm">
+  <option value="Bank transfer">Bank transfer</option>
+  <option value="Credit / Debit Card">Credit / Debit Card</option>
+  <option value="Cash">Cash</option>
+  <option value="Direct Debit">Direct Debit</option>
+  <option value="Check / Cheque">Check / Cheque</option>
+</select>
+
+<label for="pd">Payment Date</label>
 <input id="pd" type="date" value="2026-10-31">
-<label>Transaction Reference</label>
-<input id="pr" placeholder="e.g. TXN-9921">
+
+<label for="pr">Transaction Reference</label>
+<input id="pr" placeholder="e.g. TXN-9921 (Unique bank/gateway ref)">
+
+<label for="pn">Payment Notes / Memo</label>
+<textarea id="pn" style="width:100%;height:60px;margin-bottom:16px;border:1px solid var(--b);border-radius:6px;padding:8px;font-family:inherit" placeholder="Optional notes, receipt number, or memo..."></textarea>
+
 <div class="ft">
   <button class="btn o" onclick="X()">Cancel</button>
-  <button class="btn" id="ok">Record payment</button>
+  <button class="btn" id="ok">Record Payment</button>
 </div>`);
 
   o.querySelector('#ok').onclick = () => {
-    const pa = o.querySelector('#pa');
-    const amount = +pa.value;
-    if (!(amount > 0)) return toast('Enter a valid payment amount above zero');
-    const pm = o.querySelector('#pm').value;
-    const pr = o.querySelector('#pr').value.trim() || 'DIRECT';
-    const prev = i.st;
+    const amountVal = +o.querySelector('#pa').value;
+    const method = o.querySelector('#pm').value;
+    const dateVal = o.querySelector('#pd').value || '2026-10-31';
+    const refVal = o.querySelector('#pr').value.trim();
+    const notesVal = o.querySelector('#pn').value.trim();
 
-    // Transition to Paid
-    i.st = 'Paid';
+    // 1. Strict amount validation
+    if (!(amountVal > 0)) {
+      return toast('Validation Error: Payment amount must be strictly greater than zero.');
+    }
+    if (roundToTwo(amountVal - currentResidual) > 0) {
+      return toast(`Validation Error: Payment amount (${M(amountVal)}) exceeds remaining balance of ${M(currentResidual)}.`);
+    }
+
+    // 2. Prevent duplicate payment submissions
+    if (refVal) {
+      const isDuplicateRef = (D.payments || []).some(
+        p => p.invId === i.id && p.ref && p.ref.toLowerCase() === refVal.toLowerCase()
+      );
+      if (isDuplicateRef) {
+        return toast(`Duplicate Error: Transaction reference '${refVal}' has already been recorded for this invoice.`);
+      }
+    } else {
+      const isIdentical = (D.payments || []).some(
+        p => p.invId === i.id && p.amt === amountVal && p.d === dateVal && p.m === method
+      );
+      if (isIdentical) {
+        return toast('Duplicate Error: An identical payment has already been recorded for this invoice today.');
+      }
+    }
+
+    // 3. Create payment record
+    if (!D.payments) D.payments = [];
+    const nextPayId = Math.max(0, ...D.payments.map(p => p.id)) + 1;
+    const payNum = `PAY-${1000 + nextPayId}`;
+    const paymentRecord = {
+      id: nextPayId,
+      invId: i.id,
+      n: payNum,
+      inv: i.n,
+      c: i.c,
+      amt: amountVal,
+      m: method,
+      d: dateVal,
+      ref: refVal || 'N/A',
+      notes: notesVal || 'Payment recorded',
+      user: currentUser.name
+    };
+    D.payments.push(paymentRecord);
+
+    // 4. Update invoice balances and state
+    i.paid = roundToTwo((i.paid || 0) + amountVal);
+    i.residual = Math.max(0, roundToTwo(i.amt - i.paid));
+
+    const isFullSettlement = (i.residual === 0);
+    const prevStatus = i.st;
+
+    if (isFullSettlement) {
+      i.st = 'Paid';
+      logInvoiceHistory(
+        i,
+        'Payment Recorded',
+        prevStatus,
+        'Paid',
+        `Full settlement of ${M(amountVal)} recorded via ${method} (${payNum}, Ref: ${refVal || 'N/A'}). Balance: $0.00. Notes: ${notesVal || 'None'}`
+      );
+      toast(`Payment of ${M(amountVal)} recorded. Invoice ${i.n} is now fully Paid.`);
+    } else {
+      logInvoiceHistory(
+        i,
+        'Payment Recorded',
+        prevStatus,
+        prevStatus,
+        `Partial payment of ${M(amountVal)} recorded via ${method} (${payNum}, Ref: ${refVal || 'N/A'}). Remaining balance: ${M(i.residual)}. Notes: ${notesVal || 'None'}`
+      );
+      toast(`Partial payment of ${M(amountVal)} recorded. Remaining balance: ${M(i.residual)}.`);
+    }
+
     X();
-    logInvoiceHistory(i, 'Payment Recorded', prev, 'Paid', `Full payment of ${M(amount)} recorded via ${pm} (Ref: ${pr}).`);
-    toast(`${i.n} marked as Paid`);
     if (typeof window.R === 'function') window.R();
   };
+}
+
+export function viewPaymentDetails(payId) {
+  if (!currentUser.isAuthorized) {
+    return toast('Access Denied: Only authorized billing staff can view payment details.');
+  }
+
+  const p = (D.payments || []).find(x => x.id === payId);
+  if (!p) return toast('Payment record not found.');
+
+  modal(`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h2 style="margin:0">Payment Receipt · ${p.n}</h2>
+      <span class="bd g">Recorded &amp; Settled</span>
+    </div>
+    <div style="background:#f8fafc;padding:12px;border-radius:6px;margin-bottom:16px">
+      <p style="margin:4px 0">Invoice: <b>${p.inv}</b></p>
+      <p style="margin:4px 0">Customer: <b>${p.c}</b></p>
+      <p style="margin:4px 0">Amount Paid: <b style="color:var(--c,#0f766e);font-size:16px">${M(p.amt)}</b></p>
+      <p style="margin:4px 0">Payment Method: <b>${p.m}</b></p>
+      <p style="margin:4px 0">Payment Date: <b>${p.d}</b></p>
+      <p style="margin:4px 0">Transaction Reference: <b>${p.ref || 'N/A'}</b></p>
+      <p style="margin:4px 0">Recorded By: <b>${p.user || 'Billing Staff'}</b></p>
+    </div>
+    <label>Internal Notes / Memo</label>
+    <p style="background:#fff;border:1px solid var(--b);padding:8px;border-radius:4px;color:var(--m,#475569)">${p.notes || 'No operational notes attached.'}</p>
+    <div class="ft" style="margin-top:16px">
+      <button class="btn o" onclick="window.print()">Print Receipt</button>
+      <button class="btn" onclick="X()">Close</button>
+    </div>
+  `);
 }
 
 export function sendInvoice(id) {
@@ -210,7 +341,6 @@ export function downloadInvoice(id) {
   }
   logInvoiceHistory(i, 'Downloaded', i.st, i.st, 'Invoice PDF copy downloaded.');
 
-  // Create text/PDF simulated download blob
   const textContent = `=====================================================
 INVOICE: ${i.n}
 =====================================================
@@ -219,10 +349,9 @@ Date: 2026-10-31
 Due Date: ${i.due}
 Status: ${i.st}
 -----------------------------------------------------
-Subscription Base Amount: $${(i.amt / 1.18).toFixed(2)}
-Tax (18%):                $${(i.amt - i.amt / 1.18).toFixed(2)}
------------------------------------------------------
-TOTAL:                    $${Number(i.amt).toFixed(2)}
+Total Invoiced Amount:    $${Number(i.amt).toFixed(2)}
+Total Paid to Date:       $${Number(i.paid || (i.st === 'Paid' ? i.amt : 0)).toFixed(2)}
+Remaining Balance Due:    $${Number(i.residual !== undefined ? i.residual : (i.st === 'Paid' ? 0 : i.amt)).toFixed(2)}
 =====================================================
 Generated by Odoo Subscription Management System
 `;
@@ -257,9 +386,13 @@ export function deleteInvoice(id) {
 }
 
 export function invD(i) {
-  const isFinalized = i.st === 'Confirmed' || i.st === 'Paid';
   const isOverdue = ds(i) === 'Overdue';
   const historyList = (i.history || []).slice().reverse();
+  const invoicePayments = (D.payments || []).filter(p => p.invId === i.id);
+
+  const totalAmt = i.amt;
+  const paidAmt = i.paid !== undefined ? i.paid : (i.st === 'Paid' ? totalAmt : 0);
+  const residualAmt = i.residual !== undefined ? i.residual : (i.st === 'Paid' ? 0 : totalAmt);
 
   return [
     `<button class="btn o np" onclick="S.inv=null;R()">← All invoices</button>`,
@@ -274,34 +407,40 @@ export function invD(i) {
 
   ${i.st === 'Draft' ? `
     <div style="background:#f1f5f9;border-left:3px solid #64748b;padding:8px 12px;margin:14px 0;border-radius:4px">
-      <small style="color:#334155"><b>Status: Draft.</b> Invoice has been generated but not yet confirmed. Financial details may be modified or confirmed by authorized staff.</small>
+      <small style="color:#334155"><b>Status: Draft.</b> Invoice has been generated but not yet confirmed. Financial terms may be adjusted before confirmation.</small>
     </div>
   ` : i.st === 'Confirmed' ? `
     <div style="background:#eff6ff;border-left:3px solid #3b82f6;padding:8px 12px;margin:14px 0;border-radius:4px">
-      <small style="color:#1d4ed8"><b>Status: Confirmed.</b> Invoice is finalized and awaiting payment. Financial figures and customer assignment are locked.</small>
+      <small style="color:#1d4ed8"><b>Status: Confirmed.</b> Invoice is finalized awaiting payment. Financial lines are locked. Remaining due: <b>${M(residualAmt)}</b>.</small>
     </div>
   ` : i.st === 'Paid' ? `
     <div style="background:#ecfdf5;border-left:3px solid #10b981;padding:8px 12px;margin:14px 0;border-radius:4px">
-      <small style="color:#047857"><b>Status: Fully Paid.</b> Invoice is completely settled and finalized. No modifications or status changes allowed.</small>
+      <small style="color:#047857"><b>Status: Fully Paid.</b> Invoice is completely settled. No further payments or modifications permitted.</small>
     </div>
   ` : `
     <div style="background:#fef2f2;border-left:3px solid #ef4444;padding:8px 12px;margin:14px 0;border-radius:4px">
-      <small style="color:#b91c1c"><b>Status: Cancelled.</b> This invoice was voided/cancelled and cannot be processed or paid.</small>
+      <small style="color:#b91c1c"><b>Status: Cancelled.</b> This invoice was voided/cancelled and cannot accept payments or processing.</small>
     </div>
   `}
 
+  <!-- Financial Summary -->
   <table style="margin-top:12px">
     <thead>
-      <tr><th>Item Description</th><th style="text-align:right">Amount</th></tr>
+      <tr><th>Billing Breakdown</th><th style="text-align:right">Amount</th></tr>
     </thead>
     <tbody>
-      <tr><td>Subscription Recurring Service</td><td style="text-align:right">${M((i.amt / 1.18).toFixed(2))}</td></tr>
-      <tr><td>Applicable Tax (18%)</td><td style="text-align:right">${M((i.amt - i.amt / 1.18).toFixed(2))}</td></tr>
-      <tr style="font-weight:bold;border-top:2px solid var(--b)"><td>Total Payable</td><td style="text-align:right"><b>${M(i.amt)}</b></td></tr>
+      <tr><td>Subscription Recurring Service</td><td style="text-align:right">${M((totalAmt / 1.18).toFixed(2))}</td></tr>
+      <tr><td>Applicable Tax (18%)</td><td style="text-align:right">${M((totalAmt - totalAmt / 1.18).toFixed(2))}</td></tr>
+      <tr style="font-weight:bold;border-top:1px solid var(--b)"><td>Total Invoiced</td><td style="text-align:right"><b>${M(totalAmt)}</b></td></tr>
+      <tr style="color:#047857"><td>Total Paid</td><td style="text-align:right"><b>${M(paidAmt)}</b></td></tr>
+      <tr style="font-weight:bold;font-size:15px;background:#f8fafc">
+        <td>Remaining Balance Due</td>
+        <td style="text-align:right;color:${residualAmt > 0 ? '#b91c1c' : '#047857'}"><b>${M(residualAmt)}</b></td>
+      </tr>
     </tbody>
   </table>
 
-  <!-- Action Toolbar with Strict Lifecycle Permission Guards -->
+  <!-- Action Toolbar with Payment & Lifecycle Controls -->
   <div class="tb np" style="margin-top:20px;padding-top:16px;border-top:1px solid var(--b)">
     ${i.st === 'Draft' ? `
       <button class="btn" onclick="confirmInvoice(${i.id})">✓ Confirm invoice</button>
@@ -324,6 +463,45 @@ export function invD(i) {
       <button class="btn o" disabled style="opacity:0.6;cursor:not-allowed">Actions Disabled (Cancelled)</button>
     `}
   </div>
+</div>
+
+<!-- Recorded Payments Section -->
+<div class="card" style="max-width:760px;margin-top:16px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <h3 style="margin:0">Recorded Payments</h3>
+    <small class="mut">${invoicePayments.length} payment(s) credited</small>
+  </div>
+
+  ${invoicePayments.length ? `
+    <div style="overflow-x:auto">
+      <table style="width:100%;font-size:13px">
+        <thead>
+          <tr>
+            <th>Payment #</th>
+            <th>Date</th>
+            <th>Method</th>
+            <th style="text-align:right">Amount</th>
+            <th>Reference</th>
+            <th>Notes</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${invoicePayments.map(p => `
+            <tr>
+              <td><b>${p.n}</b></td>
+              <td>${p.d}</td>
+              <td>${p.m}</td>
+              <td style="text-align:right;font-weight:bold;color:#047857">${M(p.amt)}</td>
+              <td><code>${p.ref || 'N/A'}</code></td>
+              <td class="mut">${p.notes || '—'}</td>
+              <td style="text-align:right"><button class="btn o" style="padding:3px 8px;font-size:11px" onclick="viewPaymentDetails(${p.id})">Details</button></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  ` : '<p class="mut" style="margin:8px 0">No payments recorded yet for this invoice.</p>'}
 </div>
 
 <!-- Invoice Lifecycle History Section -->
@@ -361,4 +539,8 @@ export function invD(i) {
   ` : '<p class="mut">No lifecycle history recorded for this invoice.</p>'}
 </div>`
   ];
+}
+
+function roundToTwo(num) {
+  return +(Math.round(num + "e+2") + "e-2");
 }
