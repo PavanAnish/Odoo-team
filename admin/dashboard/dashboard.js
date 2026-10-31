@@ -1,4 +1,4 @@
-import { D, S, M, ds } from '../shared/store.js';
+import { D, S, M, ds, getFinancialSummary } from '../shared/store.js';
 
 export const spark = (v, c = '#A47551') => {
   const m = Math.max(...v);
@@ -21,10 +21,11 @@ export const area = (v, c, w = 600, h = 200) => {
 };
 
 export function dash() {
+  const summary = getFinancialSummary(D.invoices);
   const od = D.invoices.filter(i => ds(i) === 'Overdue');
-  const odA = od.reduce((a, i) => a + i.amt, 0);
-  const paid = D.invoices.filter(i => i.st === 'Paid').reduce((a, i) => a + i.amt, 0);
-  const out = D.invoices.filter(i => ds(i) === 'Confirmed').reduce((a, i) => a + i.amt, 0);
+  const odA = summary.totalOverdue;
+  const paid = summary.totalPaid;
+  const out = summary.totalOutstanding;
 
   const ST = ['Draft', 'Quotation', 'Confirmed', 'Active', 'Closed'];
   const cl = ['#EDE3D8', '#D9A441', '#C9A88A', '#7E9C88', '#A29789'];

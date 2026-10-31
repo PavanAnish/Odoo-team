@@ -53,8 +53,13 @@
             <xpath expr="//field[@name='ref']" position="after">
                 <field name="subscription_id" readonly="1" invisible="not subscription_id"/>
                 <field name="subscription_billing_date" readonly="1" invisible="not subscription_id"/>
+                <field name="invoice_date_due"/>
                 <field name="amount_paid" readonly="1"/>
                 <field name="amount_residual" readonly="1"/>
+                <field name="payment_state" widget="badge"/>
+                <field name="is_overdue" invisible="1"/>
+                <field name="days_overdue" invisible="not is_overdue"/>
+                <field name="overdue_status" widget="badge" invisible="invoice_status == 'draft'"/>
                 <field name="invoice_sent" readonly="1" invisible="not invoice_sent"/>
                 <field name="invoice_sent_date" readonly="1" invisible="not invoice_sent"/>
             </xpath>
@@ -211,4 +216,19 @@
               parent="subscription_base.menu_subscription_billing_menu"
               action="action_subscription_payments"
               sequence="20"/>
+    <!-- Invoice Search View Filters for Payment States and Overdue -->
+    <record id="view_account_invoice_filter_subscription" model="ir.ui.view">
+        <field name="name">account.move.select.subscription</field>
+        <field name="model">account.move</field>
+        <field name="inherit_id" ref="account.view_account_invoice_filter"/>
+        <field name="arch" type="xml">
+            <xpath expr="//search" position="inside">
+                <separator/>
+                <filter string="Unpaid" name="filter_unpaid" domain="[('invoice_status', 'in', ['draft', 'confirmed']), ('payment_state', '=', 'not_paid'), ('state', '!=', 'cancel')]"/>
+                <filter string="Partially Paid" name="filter_partial" domain="[('invoice_status', '=', 'confirmed'), ('payment_state', '=', 'partial'), ('state', '!=', 'cancel')]"/>
+                <filter string="Fully Paid" name="filter_paid" domain="[('invoice_status', '=', 'paid'), ('state', '!=', 'cancel')]"/>
+                <filter string="Overdue" name="filter_overdue" domain="[('is_overdue', '=', True), ('state', '!=', 'cancel')]"/>
+            </xpath>
+        </field>
+    </record>
 </odoo>

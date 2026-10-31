@@ -1,34 +1,65 @@
-import { D, S, M, B, ds, dO, toast, modal, X, confirmD, currentUser, logInvoiceHistory } from '../shared/store.js';
+import { D, S, M, B, ds, dO, toast, modal, X, confirmD, currentUser, logInvoiceHistory, isUnpaid, isPartial, isFullyPaid, isOverdue, getFinancialSummary } from '../shared/store.js';
 
 export function invs() {
   if (S.inv) {
     const selectedInv = D.invoices.find(i => i.id === S.inv);
     if (selectedInv) return invD(selectedInv);
   }
-  const T = ['All', 'Draft', 'Confirmed', 'Paid', 'Cancelled', 'Overdue'];
+  const summary = getFinancialSummary(D.invoices);
+  const T = ['All', 'Unpaid', 'Partially Paid', 'Overdue', 'Draft', 'Confirmed', 'Paid', 'Cancelled'];
   const rows = D.invoices.filter(i => {
     if (S.tab === 'All') return true;
+    if (S.tab === 'Unpaid') return isUnpaid(i);
+    if (S.tab === 'Partially Paid') return isPartial(i);
     if (S.tab === 'Overdue') return ds(i) === 'Overdue';
-    if (S.tab === 'Confirmed') return ds(i) === 'Confirmed';
+    if (S.tab === 'Paid') return isFullyPaid(i);
+    if (S.tab === 'Confirmed') return i.st === 'Confirmed';
+    if (S.tab === 'Draft') return i.st === 'Draft';
+    if (S.tab === 'Cancelled') return i.st === 'Cancelled';
     return i.st === S.tab;
   });
 
   return [
-    `<button class="btn" onclick="runBilling()">+ Run billing (New Draft)</button>`,
+    `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h2 style="margin:0">Invoices &amp; Balances</h2>
+      <button class="btn" onclick="runBilling()">+ Run billing (New Draft)</button>
+    </div>
+    <div class="g g4" style="margin-bottom:16px">
+      <div class="card" style="padding:12px 16px">
+        <span class="mut" style="font-size:12px">Total Invoiced</span>
+        <div style="font-size:20px;font-weight:bold;margin-top:2px">${M(summary.totalInvoiced)}</div>
+        <small class="mut">${summary.countTotal} active invoice(s)</small>
+      </div>
+      <div class="card" style="padding:12px 16px">
+        <span class="mut" style="font-size:12px">Payments Collected</span>
+        <div style="font-size:20px;font-weight:bold;color:#047857;margin-top:2px">${M(summary.totalPaid)}</div>
+        <small class="mut">${summary.countPaid} settled · ${summary.countPartial} partial</small>
+      </div>
+      <div class="card" style="padding:12px 16px">
+        <span class="mut" style="font-size:12px">Remaining Outstanding</span>
+        <div style="font-size:20px;font-weight:bold;color:#b45309;margin-top:2px">${M(summary.totalOutstanding)}</div>
+        <small class="mut">${summary.countUnpaid} unpaid · ${summary.countPartial} partial</small>
+      </div>
+      <div class="card" style="padding:12px 16px">
+        <span class="mut" style="font-size:12px">Overdue Balance</span>
+        <div style="font-size:20px;font-weight:bold;color:#dc2626;margin-top:2px">${M(summary.totalOverdue)}</div>
+        <small class="${summary.countOverdue > 0 ? 'dn' : 'mut'}">${summary.countOverdue} invoice(s) overdue</small>
+      </div>
+    </div>`,
     `<div class="tabs">${T.map(t => `<button class="${S.tab === t ? 'on' : ''}" onclick="S.tab='${t}';R()">${t}</button>`).join('')}</div>${rows.length ? `<div class="card tp tw rt"><table><thead><tr><th>Invoice</th><th>Customer</th><th>Total</th><th>Paid</th><th>Due</th><th>Status</th><th>Actions</th></tr></thead><tbody>${rows.map(i => {
-      const isOverdue = ds(i) === 'Overdue';
+      const isOd = ds(i) === 'Overdue';
       const paid = i.paid || (i.st === 'Paid' ? i.amt : 0);
-      const residual = i.residual !== undefined ? i.residual : (i.st === 'Paid' ? 0 : i.amt);
-      return `<tr class="r ${isOverdue ? 'ov' : ''}" onclick="S.inv=${i.id};R()">
+      const residual = (i.st === 'Cancelled') ? 0 : (i.residual !== undefined ? i.residual : (i.st === 'Paid' ? 0 : i.amt));
+      return `<tr class="r ${isOd ? 'ov' : ''}" onclick="S.inv=${i.id};R()">
         <td data-l="Invoice"><b>${i.n}</b> <small class="mut">auto</small></td>
         <td data-l="Customer">${i.c}</td>
         <td data-l="Total">${M(i.amt)}</td>
         <td data-l="Paid" class="${paid > 0 ? 'mut' : 'mut'}">${M(paid)}</td>
-        <td data-l="Due">${M(residual)}${isOverdue ? ` <b class="dn">${dO(i)}d overdue</b>` : ''}</td>
+        <td data-l="Due">${M(residual)}${isOd ? ` <b class="dn">${dO(i)}d overdue</b>` : ''}</td>
         <td data-l="Status">${B(ds(i))}</td>
         <td style="white-space:nowrap">${
           i.st === 'Draft' ? `<button class="btn o" onclick="event.stopPropagation();confirmInvoice(${i.id})">Confirm</button>` :
-          (i.st === 'Confirmed' || isOverdue) ? `<button class="btn o" onclick="event.stopPropagation();pay(${i.id})">Record payment</button>` :
+          (i.st === 'Confirmed' || isOd || isPartial(i)) ? `<button class="btn o" onclick="event.stopPropagation();pay(${i.id})">Record payment</button>` :
           i.st === 'Paid' ? `<small class="mut">✓ Fully Paid</small>` :
           `<small class="mut">Cancelled</small>`
         }</td>
@@ -108,6 +139,7 @@ export function cancelInvoice(id) {
     const reason = o.querySelector('#c_reason').value.trim() || 'Invoice cancelled by user';
     const prev = i.st;
     i.st = 'Cancelled';
+    i.residual = 0;
     X();
     logInvoiceHistory(i, 'Cancelled', prev, 'Cancelled', reason);
     toast(`Invoice ${i.n} has been cancelled`);

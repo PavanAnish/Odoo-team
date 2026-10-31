@@ -5,7 +5,8 @@ export const TODAY = new Date('2026-10-31');
 export const BC = {
   Active: 'g', Paid: 'g', Confirmed: 'g', Converted: 'g',
   Draft: 's', Quotation: 'a', Pending: 'a', Paused: 'a',
-  Overdue: 'r', Closed: 's', Inactive: 's', Sent: 'a', Cancelled: 's'
+  Overdue: 'r', Closed: 's', Inactive: 's', Sent: 'a', Cancelled: 's',
+  'Partially Paid': 'a', Unpaid: 's', Settled: 'g'
 };
 
 export const B = s => `<span class="bd ${BC[s] || 's'}">${s}</span>`;
@@ -87,7 +88,8 @@ export const D = {
     ]],
     ['INV-2043', 'Harbor & Pine', 116, 'Confirmed', '2026-10-22', [
       { t: '2026-10-01 09:00', a: 'System', act: 'Created', from: null, to: 'Draft', d: 'Generated from weekly billing run' },
-      { t: '2026-10-02 14:10', a: 'Admin User', act: 'Confirmed', from: 'Draft', to: 'Confirmed', d: 'Invoice confirmed and locked' }
+      { t: '2026-10-02 14:10', a: 'Admin User', act: 'Confirmed', from: 'Draft', to: 'Confirmed', d: 'Invoice confirmed and locked' },
+      { t: '2026-10-15 11:20', a: 'Admin User', act: 'Payment Recorded', from: 'Confirmed', to: 'Confirmed', d: 'Partial payment of $50 recorded via Credit / Debit Card (Ref: CC-9012). Remaining balance: $66.00' }
     ]],
     ['INV-2044', 'Orbit Foods', 171, 'Confirmed', '2026-10-12', [
       { t: '2026-09-20 10:00', a: 'System', act: 'Created', from: null, to: 'Draft', d: 'Generated from monthly billing run' },
@@ -102,13 +104,14 @@ export const D = {
   ].map((r, i) => {
     const isPaid = r[3] === 'Paid';
     const total = r[2];
+    const initialPaid = isPaid ? total : (i === 2 ? 50 : 0);
     return {
       id: i + 1,
       n: r[0],
       c: r[1],
       amt: total,
-      paid: isPaid ? total : 0,
-      residual: isPaid ? 0 : total,
+      paid: initialPaid,
+      residual: Math.max(0, total - initialPaid),
       st: r[3],
       due: r[4],
       history: r[5] || []
@@ -128,14 +131,104 @@ export const D = {
       ref: 'TXN-4491',
       notes: 'Full settlement via wire transfer.',
       user: 'Admin User'
+    },
+    {
+      id: 2,
+      invId: 3,
+      n: 'PAY-1002',
+      inv: 'INV-2043',
+      c: 'Harbor & Pine',
+      amt: 50,
+      m: 'Credit / Debit Card',
+      d: '2026-10-15',
+      ref: 'CC-9012',
+      notes: 'Partial advance payment.',
+      user: 'Admin User'
     }
   ]
 };
 
 export const S = { q: {}, sort: {}, tab: 'All', view: 'table', sel: null, rev: 'Month', view2: 'table', qt: 'Quotations', inv: null };
 
-export const ds = i => i.st !== 'Paid' && i.st !== 'Draft' && i.st !== 'Cancelled' && new Date(i.due) < TODAY ? 'Overdue' : i.st;
+export const ds = i => {
+  if (i.st === 'Cancelled') return 'Cancelled';
+  const residual = i.residual !== undefined ? i.residual : (i.st === 'Paid' ? 0 : i.amt);
+  if (i.st === 'Paid' || (residual <= 0 && (i.paid || 0) > 0)) return 'Paid';
+  if (i.st !== 'Draft' && residual > 0 && new Date(i.due) < TODAY) return 'Overdue';
+  if (i.st === 'Confirmed' && (i.paid || 0) > 0 && residual > 0) return 'Partially Paid';
+  return i.st;
+};
 export const dO = i => Math.floor((TODAY - new Date(i.due)) / 864e5);
+
+export const isUnpaid = i => i.st !== 'Cancelled' && (!i.paid || i.paid === 0) && (i.residual !== undefined ? i.residual > 0 : i.amt > 0);
+export const isPartial = i => i.st !== 'Cancelled' && (i.paid || 0) > 0 && (i.residual !== undefined ? i.residual > 0 : true);
+export const isFullyPaid = i => i.st === 'Paid' || ((i.residual !== undefined ? i.residual === 0 : false) && (i.paid || 0) > 0);
+export const isOverdue = i => ds(i) === 'Overdue';
+
+export function getFinancialSummary(invoices = D.invoices) {
+  let totalInvoiced = 0;
+  let totalPaid = 0;
+  let totalOutstanding = 0;
+  let totalOverdue = 0;
+
+  let countTotal = 0;
+  let countDraft = 0;
+  let countConfirmed = 0;
+  let countPaid = 0;
+  let countPartial = 0;
+  let countUnpaid = 0;
+  let countOverdue = 0;
+  let countCancelled = 0;
+
+  for (const i of invoices) {
+    if (i.st === 'Cancelled') {
+      countCancelled++;
+      continue;
+    }
+
+    countTotal++;
+    const total = i.amt || 0;
+    const paid = i.paid !== undefined ? i.paid : (i.st === 'Paid' ? total : 0);
+    const residual = i.residual !== undefined ? i.residual : (i.st === 'Paid' ? 0 : total);
+    const isOd = (i.st !== 'Draft' && residual > 0 && new Date(i.due) < TODAY);
+
+    totalInvoiced += total;
+    totalPaid += paid;
+
+    if (i.st === 'Draft') {
+      countDraft++;
+      totalOutstanding += residual;
+      if (paid === 0) countUnpaid++;
+      else countPartial++;
+    } else if (i.st === 'Confirmed') {
+      countConfirmed++;
+      totalOutstanding += residual;
+      if (isOd) {
+        totalOverdue += residual;
+        countOverdue++;
+      }
+      if (paid === 0) countUnpaid++;
+      else if (residual > 0) countPartial++;
+    } else if (i.st === 'Paid' || residual === 0) {
+      countPaid++;
+    }
+  }
+
+  return {
+    totalInvoiced: Math.round(totalInvoiced * 100) / 100,
+    totalPaid: Math.round(totalPaid * 100) / 100,
+    totalOutstanding: Math.round(totalOutstanding * 100) / 100,
+    totalOverdue: Math.round(totalOverdue * 100) / 100,
+    countTotal,
+    countDraft,
+    countConfirmed,
+    countPaid,
+    countPartial,
+    countUnpaid,
+    countOverdue,
+    countCancelled,
+  };
+}
 
 export const currentUser = {
   name: 'Admin User',
