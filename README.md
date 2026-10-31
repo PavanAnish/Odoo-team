@@ -9,7 +9,15 @@ quotations, recurring invoices, payments, and financial reporting.
 > shared reference for implementation and integration.
 
 ---
+### Running Tests
 
+To verify all modules and integration logic:
+
+```bash
+python3 scripts/validate_modules.py    
+python3 scripts/test_quotation_unit.py 
+python3 scripts/test_product_unit.py   
+```
 ## Table of Contents
 
 1.  [Project Overview](#1-project-overview)
