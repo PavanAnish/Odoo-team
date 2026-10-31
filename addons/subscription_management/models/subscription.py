@@ -171,6 +171,20 @@ class SubscriptionSubscription(models.Model):
     total_paused_days = fields.Integer(string='Total Paused Days', default=0, copy=False, readonly=True,
         help='Cumulative number of days this subscription has been paused across all pause/resume cycles.')
 
+    # --- Renewal Tracking ---
+    date_last_renewal = fields.Date(string='Last Renewal Date', readonly=True, copy=False,
+        help='Date when the subscription was last renewed.')
+    renewal_count = fields.Integer(string='Renewal Count', default=0, readonly=True, copy=False,
+        help='Total number of times this subscription has been renewed.')
+    last_renewal_period_end = fields.Date(string='Last Renewal Period End', readonly=True, copy=False,
+        help='The new expiry date set by the last renewal. Used for duplicate-renewal prevention.')
+    renewal_history_ids = fields.One2many(
+        'subscription.renewal.history',
+        'subscription_id',
+        string='Renewal History',
+        readonly=True,
+    )
+
     # --- Subscription & Quotation Identification ---
     subscription_ref = fields.Char(
         string='Subscription Number',
@@ -661,6 +675,130 @@ class SubscriptionSubscription(models.Model):
                 close_msg += f" Reason: {reason}"
             sub.message_post(body=close_msg)
         return True
+
+    def _check_renewal_eligibility(self):
+        """Validate renewal eligibility. Raises ValidationError if ineligible."""
+        self.ensure_one()
+        if self.state == 'closed':
+            raise ValidationError(_("Closed subscription '%s' cannot be renewed.") % self.name)
+        if self.state not in ('active', 'paused'):
+            raise ValidationError(_("Only active or paused subscriptions can be renewed. '%s' is '%s'.") % (self.name, self.state))
+        if not self.plan_id.allow_renewal:
+            raise ValidationError(_("The plan '%s' does not allow renewal.") % self.plan_id.name)
+        if self.last_renewal_period_end and self.last_renewal_period_end >= (self.date_subscription_end or fields.Date.context_today(self)):
+            raise ValidationError(_("Subscription '%s' has already been renewed for the current period.") % self.name)
+
+    def _compute_renewed_end_date(self):
+        """Compute new expiry date from current expiry (or today) using plan interval."""
+        self.ensure_one()
+        base = self.date_subscription_end or fields.Date.context_today(self)
+        interval = self.plan_id.billing_interval or 1
+        period = self.plan_id.billing_period or 'monthly'
+        if period == 'daily':
+            return base + timedelta(days=interval)
+        elif period == 'weekly':
+            return base + timedelta(weeks=interval)
+        elif period == 'monthly':
+            return base + relativedelta(months=interval)
+        elif period == 'yearly':
+            return base + relativedelta(years=interval)
+        return base + relativedelta(months=1)
+
+    def _compute_next_billing_from(self, from_date):
+        """Compute next billing date from a given date using plan interval."""
+        self.ensure_one()
+        interval = self.plan_id.billing_interval or 1
+        period = self.plan_id.billing_period or 'monthly'
+        if period == 'daily':
+            return from_date + timedelta(days=interval)
+        elif period == 'weekly':
+            return from_date + timedelta(weeks=interval)
+        elif period == 'monthly':
+            return from_date + relativedelta(months=interval)
+        elif period == 'yearly':
+            return from_date + relativedelta(years=interval)
+        return from_date + relativedelta(months=1)
+
+    def _do_renewal(self, renewal_type='manual'):
+        """Core renewal engine. Call inside a single record loop only."""
+        self.ensure_one()
+        self._check_renewal_eligibility()
+
+        prev_end = self.date_subscription_end
+        prev_billing = self.next_billing_date
+        new_end = self._compute_renewed_end_date()
+        new_billing = self._compute_next_billing_from(prev_end or fields.Date.context_today(self))
+
+        # Guard: never bill beyond the new subscription end
+        if new_billing > new_end:
+            new_billing = new_end
+
+        self.env['subscription.renewal.history'].sudo().create({
+            'subscription_id': self.id,
+            'plan_id': self.plan_id.id,
+            'renewal_type': renewal_type,
+            'renewal_result': 'success',
+            'user_id': self.env.uid,
+            'renewal_date': fields.Datetime.now(),
+            'prev_subscription_end': prev_end,
+            'new_subscription_end': new_end,
+            'prev_next_billing_date': prev_billing,
+            'new_next_billing_date': new_billing,
+        })
+
+        self.write({
+            'date_subscription_end': new_end,
+            'next_billing_date': new_billing,
+            'date_last_renewal': fields.Date.context_today(self),
+            'last_renewal_period_end': new_end,
+            'renewal_count': (self.renewal_count or 0) + 1,
+        })
+        self.message_post(body=_(
+            "Subscription renewed (%s). New expiry: %s. Next billing: %s."
+        ) % (renewal_type, new_end, new_billing))
+
+    def action_renew(self):
+        """Manual renewal action — callable from form button."""
+        if not self.env.user.has_group('subscription_base.group_subscription_user'):
+            raise AccessError(_("Only authorized staff can renew subscriptions."))
+        for sub in self:
+            sub._do_renewal(renewal_type='manual')
+        return True
+
+    @api.model
+    def _cron_auto_renew_subscriptions(self):
+        """Scheduled Action: automatically renew subscriptions whose plans enable auto-renewal."""
+        today = fields.Date.context_today(self)
+        candidates = self.search([
+            ('state', 'in', ('active', 'paused')),
+            ('plan_id.allow_renewal', '=', True),
+            ('plan_id.auto_renewal', '=', True),
+            '|',
+            ('date_subscription_end', '<=', today),
+            ('date_subscription_end', '=', False),
+        ])
+        _logger.info("Auto-renewal cron: %d candidate subscription(s) found.", len(candidates))
+        for sub in candidates:
+            try:
+                # Duplicate guard: already renewed for this period
+                if sub.last_renewal_period_end and sub.last_renewal_period_end >= (sub.date_subscription_end or today):
+                    continue
+                sub.sudo()._do_renewal(renewal_type='automatic')
+            except Exception as exc:
+                _logger.error(
+                    "Auto-renewal failed for subscription '%s' (id=%d): %s",
+                    sub.name, sub.id, exc,
+                )
+                self.env['subscription.renewal.history'].sudo().create({
+                    'subscription_id': sub.id,
+                    'plan_id': sub.plan_id.id,
+                    'renewal_type': 'automatic',
+                    'renewal_result': 'failed',
+                    'user_id': self.env.uid,
+                    'renewal_date': fields.Datetime.now(),
+                    'notes': str(exc),
+                })
+                self.env.cr.rollback()
 
     def action_pause(self, reason=None):
         """Pause an active subscription. Requires plan.allow_pause=True."""

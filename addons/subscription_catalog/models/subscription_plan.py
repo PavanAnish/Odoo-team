@@ -66,6 +66,18 @@ class SubscriptionPlan(models.Model):
         help='Set to false to deactivate the plan for new subscriptions.'
     )
 
+    # --- Renewal Settings ---
+    allow_renewal = fields.Boolean(
+        string='Allow Renewal',
+        default=True,
+        help='Whether subscriptions on this plan can be renewed.',
+    )
+    auto_renewal = fields.Boolean(
+        string='Automatic Renewal',
+        default=False,
+        help='If enabled, eligible subscriptions are renewed automatically by a scheduled job.',
+    )
+
     # --- Pause & Early Closure Settings ---
     allow_pause = fields.Boolean(
         string='Allow Pause',

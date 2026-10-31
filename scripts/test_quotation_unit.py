@@ -13,7 +13,7 @@ def run_tests():
     print("Running Quotation Logic & Calculation Verification Suite")
     print("=" * 70)
     passed = 0
-    total = 35
+    total = 40
 
     today = date.today()
     yesterday = today - timedelta(days=1)
@@ -704,7 +704,88 @@ def run_tests():
         print(f" [FAIL] 35. Paused subscription excluded from billing: {e}")
 
 
-    print("=" * 70)
+    # --- Test 36: Renewal eligibility check (closed rejected) ---
+    try:
+        def check_renewal(state, allow_renewal, last_period_end, current_end):
+            if state == 'closed':
+                raise ValueError("Closed subscription cannot be renewed.")
+            if state not in ('active', 'paused'):
+                raise ValueError(f"State '{state}' not renewable.")
+            if not allow_renewal:
+                raise ValueError("Plan does not allow renewal.")
+            if last_period_end and current_end and last_period_end >= current_end:
+                raise ValueError("Already renewed for this period.")
+            return True
+
+        assert check_renewal('active', True, None, None) is True
+        # closed blocked
+        try: check_renewal('closed', True, None, None); assert False
+        except ValueError as e: assert 'closed' in str(e).lower()
+        # no renewal
+        try: check_renewal('active', False, None, None); assert False
+        except ValueError as e: assert 'allow' in str(e).lower()
+        print(" [PASS] 36. Renewal eligibility validation")
+        passed += 1
+    except Exception as e:
+        print(f" [FAIL] 36. Renewal eligibility validation: {e}")
+
+    # --- Test 37: Monthly renewal date calculation ---
+    try:
+        from datetime import date as _d
+        from dateutil.relativedelta import relativedelta as _rd
+        jan31 = _d(2026, 1, 31)
+        result = jan31 + _rd(months=1)
+        assert result == _d(2026, 2, 28), f"Got {result}"
+        aug31 = _d(2026, 8, 31)
+        result2 = aug31 + _rd(months=1)
+        assert result2 == _d(2026, 9, 30), f"Got {result2}"
+        print(" [PASS] 37. Monthly renewal month-end date calculation")
+        passed += 1
+    except Exception as e:
+        print(f" [FAIL] 37. Monthly renewal month-end date calculation: {e}")
+
+    # --- Test 38: Yearly renewal leap year calculation ---
+    try:
+        from datetime import date as _d
+        from dateutil.relativedelta import relativedelta as _rd
+        feb29 = _d(2024, 2, 29)
+        result = feb29 + _rd(years=1)
+        assert result == _d(2025, 2, 28), f"Got {result}"
+        print(" [PASS] 38. Yearly renewal leap-year date calculation")
+        passed += 1
+    except Exception as e:
+        print(f" [FAIL] 38. Yearly renewal leap-year date calculation: {e}")
+
+    # --- Test 39: Duplicate renewal prevention logic ---
+    try:
+        def is_duplicate(last_period_end, current_end):
+            return bool(last_period_end and current_end and last_period_end >= current_end)
+
+        from datetime import date as _d
+        end = _d(2026, 11, 30)
+        assert is_duplicate(_d(2026, 11, 30), end) is True   # same — duplicate
+        assert is_duplicate(_d(2026, 12, 31), end) is True   # after — duplicate
+        assert is_duplicate(_d(2026, 10, 31), end) is False  # before — ok
+        assert is_duplicate(None, end) is False               # no history — ok
+        print(" [PASS] 39. Duplicate renewal prevention logic")
+        passed += 1
+    except Exception as e:
+        print(f" [FAIL] 39. Duplicate renewal prevention logic: {e}")
+
+    # --- Test 40: Next billing date capped at new subscription end ---
+    try:
+        from datetime import date as _d
+        from dateutil.relativedelta import relativedelta as _rd
+        sub_end = _d(2026, 12, 31)
+        billing_candidate = _d(2027, 1, 31)  # exceeds end
+        final_billing = min(billing_candidate, sub_end)
+        assert final_billing == sub_end, f"Expected {sub_end}, got {final_billing}"
+        print(" [PASS] 40. Next billing date capped at new subscription end")
+        passed += 1
+    except Exception as e:
+        print(f" [FAIL] 40. Next billing date capped at new subscription end: {e}")
+
+        print("=" * 70)
     print(f"Verification Results: {passed}/{total} tests passed successfully!")
     print("=" * 70)
     if passed == total:

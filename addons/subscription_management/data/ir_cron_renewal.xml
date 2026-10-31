@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Subscription: Auto-Renewal Scheduled Action (daily) -->
+    <record id="cron_subscription_auto_renewal" model="ir.cron">
+        <field name="name">Subscription: Auto-Renew Eligible Subscriptions</field>
+        <field name="model_id" ref="subscription_management.model_subscription_subscription"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_auto_renew_subscriptions()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="numbercall">-1</field>
+        <field name="active">True</field>
+        <field name="priority">90</field>
+    </record>
+</odoo>
