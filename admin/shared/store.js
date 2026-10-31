@@ -447,6 +447,22 @@ export function form(k, id) {
     X();
     toast('Saved ' + (out.name || 'quotation'));
     if (typeof window.R === 'function') window.R();
+    // Also persist to backend (fire-and-forget, no UI block)
+    import('./api.js').then(api => {
+      const endpoint = `/admin/api/${k.slice(0, -1)}/write`;
+      const payload = id ? { data: { id, ...out } } : { data: out };
+      fetch(endpoint, {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: payload })
+      }).then(r => r.json()).then(res => {
+        if (res.result && res.result.id && !id) {
+          // Update local id with server-assigned id
+          const last = D[k][D[k].length - 1];
+          if (last && last.id !== res.result.id) last.id = res.result.id;
+        }
+      }).catch(() => {});
+    }).catch(() => {});
   };
 }
 
@@ -455,13 +471,26 @@ export function del(k, id) {
     D[k] = D[k].filter(r => r.id !== id);
     toast('Deleted');
     if (typeof window.R === 'function') window.R();
+    // Persist delete to backend
+    fetch(`/admin/api/${k.slice(0, -1)}/${id}/delete`, {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: {} })
+    }).catch(() => {});
   }, 'Delete', 'd');
 }
 
 export function tog(k, id, key) {
   const r = D[k].find(x => x.id === id);
+  if (!r) return;
   r[key] = r[key] ? 0 : 1;
   if (typeof window.R === 'function') window.R();
+  // Persist toggle to backend
+  fetch(`/admin/api/${k.slice(0, -1)}/toggle`, {
+    method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: { id, key, value: r[key] } })
+  }).catch(() => {});
 }
 
 export const CR = {
@@ -530,10 +559,10 @@ export async function loadData() {
         id: r.id,
         name: r.name,
         email: r.email || '',
-        company: r.company_name || '',
-        portal: 0,
+        company: r.company_name || r.company || '',
+        portal: r.portal ? 1 : 0,
         subs: r.subs || 0,
-        ltv: 0,
+        ltv: r.ltv || 0,
         status: r.status || 'Active',
       }));
     }
@@ -544,11 +573,11 @@ export async function loadData() {
       D.products = prodRes.records.map(r => ({
         id: r.id,
         name: r.name,
-        type: r.type || 'service',
+        type: r.type || 'Software',
         price: r.price || 0,
         cost: r.cost || 0,
         notes: r.notes || '',
-        variants: [],
+        variants: r.variants || [],
       }));
     }
 
@@ -558,15 +587,15 @@ export async function loadData() {
       D.plans = planRes.records.map(r => ({
         id: r.id,
         name: r.name,
-        freq: r.billing_period || 'monthly',
+        freq: r.billing_period || 'Monthly',
         minQty: r.min_quantity || 1,
         start: r.date_start || '',
         end: r.date_end || '',
         pause: r.allow_pause ? 1 : 0,
         renew: r.allow_renewal ? 1 : 0,
-        autoClose: r.auto_closure ? 1 : 0,
+        autoClose: r.auto_closure || 30,
         autoRenew: r.auto_renewal ? 1 : 0,
-        products: '',
+        products: r.products || (Array.isArray(r.product_ids) ? r.product_ids.map(p => p[1]).join(',') : ''),
       }));
     }
 
@@ -576,12 +605,12 @@ export async function loadData() {
       D.subs = subRes.records.map(r => ({
         id: r.id,
         n: r.subscription_ref || r.name,
-        c: r.partner_id ? r.partner_id[1] : '',
-        plan: r.plan_id ? r.plan_id[1] : '',
+        c: r.partner_id ? r.partner_id[1] : (r.c || ''),
+        plan: r.plan_id ? r.plan_id[1] : (r.plan || ''),
         st: _stateLabel(r.state),
-        amt: r.amount_total || 0,
-        next: r.next_billing_date || '',
-        paused: r.state === 'paused' ? 1 : 0,
+        amt: r.amount_total || r.amt || 0,
+        next: r.next_billing_date || r.next || '',
+        paused: r.state === 'paused' ? 1 : (r.paused ? 1 : 0),
         state: r.state,
         _id: r.id,
       }));
@@ -593,18 +622,18 @@ export async function loadData() {
       D.quotes = quoRes.records.map(r => ({
         id: r.id,
         n: r.name,
-        customer: r.partner_id ? r.partner_id[1] : '',
-        plan: r.plan_id ? r.plan_id[1] : '',
-        product: '',
-        qty: 1,
-        disc: 0,
-        tax: 0,
+        customer: r.partner_id ? r.partner_id[1] : (r.customer || ''),
+        plan: r.plan_id ? r.plan_id[1] : (r.plan || ''),
+        product: r.product || (r.product_id ? r.product_id[1] : (D.products[0] ? D.products[0].name : '')),
+        qty: r.qty || r.quantity || 1,
+        disc: r.disc || r.discount || 0,
+        tax: r.tax || 18,
         st: _quoStateLabel(r.state, r.is_converted),
-        expiry: r.date_expiration || '',
+        expiry: r.date_expiration || r.expiry || '',
         expiry_status: r.expiration_status || 'valid',
         converted: r.is_converted,
         sub_id: r.subscription_id ? r.subscription_id[0] : null,
-        amount: r.amount_total || 0,
+        amount: r.amount_total || r.amount || 0,
       }));
     }
 
@@ -614,13 +643,13 @@ export async function loadData() {
       D.invoices = invRes.records.map(r => ({
         id: r.id,
         n: r.name,
-        c: r.partner_id ? r.partner_id[1] : '',
-        amt: r.amount_total || 0,
-        paid: r.payment_state === 'paid' ? (r.amount_total || 0) : 0,
-        residual: r.amount_residual || 0,
-        st: r.ui_state || r.payment_state || 'Draft',
-        due: r.invoice_date_due || '',
-        history: [],
+        c: r.partner_id ? r.partner_id[1] : (r.c || ''),
+        amt: r.amount_total || r.amt || 0,
+        paid: r.payment_state === 'paid' ? (r.amount_total || r.amt || 0) : (r.paid || ((r.amount_total || 0) - (r.amount_residual || 0))),
+        residual: r.amount_residual !== undefined ? r.amount_residual : (r.residual !== undefined ? r.residual : (r.payment_state === 'paid' ? 0 : r.amount_total)),
+        st: r.ui_state || (r.payment_state === 'paid' ? 'Paid' : (r.state === 'posted' ? 'Confirmed' : 'Draft')),
+        due: r.invoice_date_due || r.due || '',
+        history: r.history || [],
         _odoo_id: r.id,
       }));
     }
@@ -632,7 +661,7 @@ export async function loadData() {
         id: r.id,
         name: r.name,
         rate: r.amount || 0,
-        scope: 'all',
+        scope: r.scope || 'all',
         on: r.active ? 1 : 0,
       }));
     }
@@ -644,15 +673,15 @@ export async function loadData() {
         id: r.id,
         name: r.name,
         type: r.discount_type || 'percentage',
-        value: r.discount_value || 0,
-        minPurchase: 0,
-        minQty: 1,
-        start: r.date_start || '',
-        end: r.date_end || '',
-        limit: 100,
-        used: 0,
-        scope: 'all',
-        on: r.active ? 1 : 0,
+        value: r.value || r.discount_value || 0,
+        minPurchase: r.minPurchase || 0,
+        minQty: r.minQty || 1,
+        start: r.date_start || r.start || '',
+        end: r.date_end || r.end || '',
+        limit: r.limit || 100,
+        used: r.used || 0,
+        scope: r.scope || 'all',
+        on: r.active !== undefined ? (r.active ? 1 : 0) : (r.on !== undefined ? r.on : 1),
       }));
     }
 

@@ -1,13 +1,9 @@
 /**
  * api.js — Odoo JSON-RPC client for the Admin Dashboard SPA.
  *
- * All functions return Promises. On network or server error they
- * resolve to { error: string } so callers can detect failure without
- * catching exceptions.
- *
- * Odoo JSON-RPC 2.0 format:
- *   POST /web/dataset/call_kw  (model method calls)
- *   POST /admin/api/<endpoint> (our custom controller routes)
+ * Endpoints are relative paths — the browser resolves them against
+ * the origin of whoever is serving index.html (dev server or real Odoo).
+ * No hardcoded ports or hostnames needed.
  */
 
 const HEADERS = { 'Content-Type': 'application/json' };

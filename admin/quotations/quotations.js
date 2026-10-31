@@ -4,7 +4,8 @@ import { loadData } from '../shared/store.js';
 
 export const tot = q => {
   const product = D.products.find(p => p.name === q.product) || { price: 0 };
-  return (product.price * q.qty * (1 - q.disc / 100) * (1 + q.tax / 100)).toFixed(2);
+  const calculated = product.price * (q.qty || 1) * (1 - (q.disc || 0) / 100) * (1 + (q.tax || 0) / 100);
+  return (calculated > 0 ? calculated : (q.amount || 0)).toFixed(2);
 };
 
 export const T = ['Standard annual', 'Onboarding bundle', 'Team starter'];
