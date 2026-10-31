@@ -7,6 +7,8 @@ from dateutil.relativedelta import relativedelta
 from odoo import api, fields, models, _
 from odoo.exceptions import UserError, ValidationError
 
+from .invoice_calculator import InvoiceCalculator
+
 _logger = logging.getLogger(__name__)
 
 
@@ -14,11 +16,26 @@ class SubscriptionSubscriptionLine(models.Model):
     """Extend subscription lines with taxes and discounts for accurate billing."""
     _inherit = 'subscription.subscription.line'
 
+    discount_type = fields.Selection(
+        selection=[
+            ('percent', 'Percentage'),
+            ('fixed', 'Fixed Amount'),
+        ],
+        string='Discount Type',
+        default='percent',
+        help='Type of discount: percentage of line total, or a fixed monetary deduction.',
+    )
     discount = fields.Float(
         string='Discount (%)',
         digits='Discount',
         default=0.0,
-        help='Discount percentage applied to this line item.'
+        help='Discount percentage applied to this line item.',
+    )
+    discount_fixed = fields.Monetary(
+        string='Discount (Fixed)',
+        currency_field='currency_id',
+        default=0.0,
+        help='Fixed monetary amount to deduct from this line item.',
     )
     tax_ids = fields.Many2many(
         'account.tax',
@@ -27,15 +44,44 @@ class SubscriptionSubscriptionLine(models.Model):
         'tax_id',
         string='Taxes',
         domain="[('type_tax_use', '=', 'sale')]",
-        help='Taxes applicable to this recurring line.'
+        help='Taxes applicable to this recurring line.',
+    )
+    price_tax = fields.Monetary(
+        string='Tax Amount',
+        compute='_compute_price_subtotal',
+        store=True,
+        currency_field='currency_id',
+        help='Computed tax amount for this line.',
+    )
+    price_total = fields.Monetary(
+        string='Total',
+        compute='_compute_price_subtotal',
+        store=True,
+        currency_field='currency_id',
+        help='Line total including taxes.',
     )
 
-    @api.depends('quantity', 'price_unit', 'discount')
+    @api.depends('quantity', 'price_unit', 'discount_type', 'discount', 'discount_fixed', 'tax_ids')
     def _compute_price_subtotal(self):
-        """Compute subtotal taking discount into account."""
+        """Compute subtotal, tax, and total using Decimal arithmetic."""
+        calc = InvoiceCalculator
         for line in self:
-            discount_factor = 1.0 - (line.discount or 0.0) / 100.0
-            line.price_subtotal = line.quantity * line.price_unit * discount_factor
+            subtotal = calc.calculate_line_subtotal(
+                quantity=line.quantity,
+                price_unit=line.price_unit,
+                discount_type=line.discount_type or 'percent',
+                discount_percent=line.discount or 0.0,
+                discount_fixed=line.discount_fixed or 0.0,
+            )
+            line.price_subtotal = subtotal
+
+            # Calculate taxes
+            taxes = line.tax_ids or []
+            tax_total, _details = calc.calculate_line_taxes(subtotal, taxes)
+            line.price_tax = tax_total
+            line.price_total = calc._round(
+                calc._to_decimal(subtotal) + calc._to_decimal(tax_total)
+            )
 
 
 class SubscriptionSubscription(models.Model):
@@ -52,11 +98,38 @@ class SubscriptionSubscription(models.Model):
         string='Invoice Count',
         compute='_compute_invoice_count',
     )
+    amount_untaxed = fields.Monetary(
+        string='Untaxed Amount',
+        compute='_compute_amounts',
+        store=True,
+        tracking=True,
+    )
+    amount_tax = fields.Monetary(
+        string='Tax Amount',
+        compute='_compute_amounts',
+        store=True,
+        tracking=True,
+    )
 
     @api.depends('invoice_ids')
     def _compute_invoice_count(self):
         for sub in self:
             sub.invoice_count = len(sub.invoice_ids)
+
+    @api.depends('line_ids.price_subtotal', 'line_ids.price_tax', 'line_ids.price_total')
+    def _compute_amounts(self):
+        """Compute subscription-level untaxed, tax, and total amounts."""
+        calc = InvoiceCalculator
+        for sub in self:
+            sub.amount_untaxed = calc._round(
+                sum(calc._to_decimal(l.price_subtotal) for l in sub.line_ids)
+            )
+            sub.amount_tax = calc._round(
+                sum(calc._to_decimal(l.price_tax) for l in sub.line_ids)
+            )
+            sub.amount_total = calc._round(
+                calc._to_decimal(sub.amount_untaxed) + calc._to_decimal(sub.amount_tax)
+            )
 
     def action_view_invoices(self):
         """Open invoices linked to this subscription."""
@@ -93,8 +166,15 @@ class SubscriptionSubscription(models.Model):
         return current + delta
 
     def _prepare_invoice_line_vals(self, line, fiscal_position=None):
-        """Prepare values dictionary for creating an invoice line from a subscription line."""
+        """Prepare values dictionary for creating an invoice line from a subscription line.
+
+        For fixed discounts, the discount amount is pre-applied into the price_unit
+        so that Odoo's native invoice line (which only supports percentage discounts)
+        works correctly.  The original values are preserved in the calculation snapshot.
+        """
         self.ensure_one()
+        calc = InvoiceCalculator
+
         # Determine applicable taxes
         taxes = line.tax_ids
         if not taxes and line.product_id:
@@ -110,18 +190,68 @@ class SubscriptionSubscription(models.Model):
             if description:
                 name = description
 
+        # Handle discount: pre-apply fixed discounts into price_unit for Odoo compatibility
+        discount_type = line.discount_type or 'percent'
+        invoice_price_unit = line.price_unit
+        invoice_discount = 0.0
+
+        if discount_type == 'percent':
+            invoice_discount = line.discount or 0.0
+        elif discount_type == 'fixed':
+            # Calculate effective unit price after fixed discount
+            qty = line.quantity or 1.0
+            if qty > 0:
+                per_unit_discount = calc._round(
+                    calc._to_decimal(line.discount_fixed or 0.0) / calc._to_decimal(qty)
+                )
+                invoice_price_unit = calc._round(
+                    calc._to_decimal(line.price_unit) - calc._to_decimal(per_unit_discount)
+                )
+            invoice_discount = 0.0  # Already applied to price_unit
+
         return {
             'product_id': product.id,
             'name': name,
             'quantity': line.quantity,
-            'price_unit': line.price_unit,
-            'discount': line.discount or 0.0,
+            'price_unit': invoice_price_unit,
+            'discount': invoice_discount,
             'tax_ids': [(6, 0, taxes.ids)] if taxes else [(5, 0, 0)],
         }
+
+    def _build_lines_data_for_snapshot(self):
+        """Build a list of line data dicts for the InvoiceCalculator from subscription lines."""
+        self.ensure_one()
+        lines_data = []
+        for line in self.line_ids:
+            taxes_data = []
+            taxes = line.tax_ids
+            if not taxes and line.product_id:
+                taxes = line.product_id.taxes_id.filtered(
+                    lambda t: t.company_id == self.company_id
+                )
+            for tax in taxes:
+                taxes_data.append({
+                    'name': tax.name,
+                    'amount': tax.amount,
+                    'amount_type': tax.amount_type,
+                })
+
+            lines_data.append({
+                'product_name': line.product_id.display_name or line.product_id.name or '',
+                'product_id': line.product_id.id,
+                'quantity': line.quantity,
+                'price_unit': line.price_unit,
+                'discount_type': line.discount_type or 'percent',
+                'discount_percent': line.discount or 0.0,
+                'discount_fixed': line.discount_fixed or 0.0,
+                'taxes': taxes_data,
+            })
+        return lines_data
 
     def _prepare_invoice_vals(self, billing_date):
         """Prepare values dictionary for creating a customer invoice from a subscription."""
         self.ensure_one()
+        calc = InvoiceCalculator
         partner = self.partner_id
         fiscal_position = partner.property_account_position_id if hasattr(partner, 'property_account_position_id') else False
         if not fiscal_position and hasattr(self.env['account.fiscal.position'], '_get_fiscal_position'):
@@ -137,6 +267,17 @@ class SubscriptionSubscription(models.Model):
             for line in self.line_ids
         ]
 
+        # Build calculation snapshot
+        lines_data = self._build_lines_data_for_snapshot()
+        totals = calc.calculate_invoice_totals(lines_data)
+        currency_name = (self.currency_id.name if self.currency_id
+                         else self.env.company.currency_id.name)
+        snapshot_json = calc.build_calculation_snapshot(
+            lines_data=totals['lines'],
+            totals=totals,
+            currency_name=currency_name,
+        )
+
         invoice_vals = {
             'move_type': 'out_invoice',
             'partner_id': partner.id,
@@ -149,6 +290,11 @@ class SubscriptionSubscription(models.Model):
             'invoice_origin': self.name,
             'ref': _("Subscription %s - Billing Cycle %s") % (self.name, billing_date),
             'invoice_line_ids': lines_vals,
+            # Historical calculation snapshot
+            'subscription_calculation_details': snapshot_json,
+            'subscription_amount_untaxed': totals['amount_untaxed'],
+            'subscription_amount_tax': totals['amount_tax'],
+            'subscription_amount_total': totals['amount_total'],
         }
 
         if journal:
