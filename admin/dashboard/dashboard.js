@@ -46,7 +46,6 @@ export function dash() {
     return `${cl[i]} ${s}% ${a}%`;
   }).join(',');
 
-  const mo = [42, 47, 51, 49, 58, 63, 66, 71, 75, 82, 88, 94];
   const qt = [140, 170, 212, 264];
   const mm = S.rev === 'Month' ? mo : qt;
   const mm2 = mm.map(x => x * 0.62);

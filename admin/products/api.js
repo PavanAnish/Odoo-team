@@ -9,9 +9,9 @@
  * /subscription/catalog/products/unarchive
  */
 
-const BASE_URL = (typeof window !== 'undefined' && window.location && window.location.origin.includes(':8000'))
+const BASE_URL = (typeof window !== 'undefined' && window.location && (window.location.origin || window.location.host || '').includes(':8000'))
   ? 'http://127.0.0.1:8069'
-  : (typeof window !== 'undefined' && window.location ? window.location.origin : 'http://127.0.0.1:8069');
+  : (typeof window !== 'undefined' && window.location && window.location.origin ? window.location.origin : '');
 
 async function postJson(endpoint, params = {}) {
   const url = `${BASE_URL}${endpoint}`;
