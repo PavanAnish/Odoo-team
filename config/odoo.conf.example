@@ -1,0 +1,53 @@
+[options]
+; ==============================================================================
+; Odoo Configuration Template - Subscription Management System
+; Copy this file to config/odoo.conf and adjust values for your local environment.
+; NEVER commit real secrets, passwords, or production database configurations.
+; ==============================================================================
+
+; --- General Server Settings ---
+; Master password for database manager (create/drop/backup DB)
+admin_passwd = admin_master_password_placeholder
+
+; HTTP port for the web interface (default: 8069)
+http_port = 8069
+http_interface = 127.0.0.1
+longpolling_port = 8072
+
+; Addons paths: include local custom addons followed by core Odoo addons
+; In development, ensure absolute or relative paths from project root are specified.
+addons_path = addons,/path/to/odoo/core/addons
+
+; --- Database Configuration ---
+db_host = 127.0.0.1
+db_port = 5432
+db_user = odoo
+db_password = odoo_db_password_placeholder
+db_name = subscription_management_dev
+; Set dbfilter if multiple databases exist on postgres server
+; dbfilter = ^subscription_management_dev$
+
+; --- Server Performance & Concurrency ---
+; In local development, workers = 0 is recommended for interactive Python debugging (pdb)
+workers = 0
+max_cron_threads = 1
+limit_time_cpu = 600
+limit_time_real = 1200
+limit_memory_hard = 2684354560
+limit_memory_soft = 2147483648
+
+; --- Logging & Debugging ---
+logfile = False
+log_level = info
+; Specify custom log handlers for project modules if needed
+log_handler = :INFO,odoo.addons.subscription_base:DEBUG,odoo.addons.subscription_catalog:DEBUG,odoo.addons.subscription_management:DEBUG,odoo.addons.subscription_billing:DEBUG
+
+; --- Data & Filestore Directory ---
+data_dir = /path/to/custom/data_dir
+
+; --- Email / SMTP Settings (Optional Dev) ---
+; smtp_server = localhost
+; smtp_port = 1025
+; smtp_user = False
+; smtp_password = False
+; smtp_ssl = False

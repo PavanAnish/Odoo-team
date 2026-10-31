@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Initial system/master data -->
+        <record id="template_item_default" model="subscription.template.item">
+            <field name="name">Standard Default Template</field>
+            <field name="code">TMPL-DEFAULT-001</field>
+            <field name="description">Standard boilerplate item initialized during module installation.</field>
+            <field name="state">confirmed</field>
+        </record>
+    </data>
+</odoo>

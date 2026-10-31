@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_partner_form_inherit_subscription" model="ir.ui.view">
+        <field name="name">res.partner.form.inherit.subscription</field>
+        <field name="model">res.partner</field>
+        <field name="inherit_id" ref="base.view_partner_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//sheet" position="before">
+                <!-- Smart button placeholder for subscriptions count -->
+            </xpath>
+            <xpath expr="//page[@name='internal_notes']" position="after">
+                <page string="Subscription Details" name="subscription_details">
+                    <group>
+                        <field name="is_subscription_customer"/>
+                        <field name="subscription_count" readonly="1"/>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Subscriptions Customer Action and Menu -->
+    <record id="action_subscription_customers" model="ir.actions.act_window">
+        <field name="name">Subscription Customers</field>
+        <field name="res_model">res.partner</field>
+        <field name="view_mode">kanban,tree,form</field>
+        <field name="domain">[('is_subscription_customer', '=', True)]</field>
+        <field name="context">{'default_is_subscription_customer': True}</field>
+    </record>
+
+    <menuitem id="menu_subscription_customers"
+              name="Customers"
+              parent="subscription_base.menu_subscription_operations"
+              action="action_subscription_customers"
+              sequence="20"/>
+</odoo>

@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- List / Tree View -->
+    <record id="view_subscription_subscription_tree" model="ir.ui.view">
+        <field name="name">subscription.subscription.tree</field>
+        <field name="model">subscription.subscription</field>
+        <field name="arch" type="xml">
+            <tree string="Subscriptions" decoration-muted="state == 'closed'" decoration-warning="state == 'paused'" decoration-success="state == 'active'" decoration-info="state in ('draft', 'quotation')">
+                <field name="name"/>
+                <field name="partner_id"/>
+                <field name="plan_id"/>
+                <field name="next_billing_date"/>
+                <field name="amount_total" sum="Total Subscriptions Amount"/>
+                <field name="state" widget="badge" decoration-success="state == 'active'" decoration-info="state in ('draft', 'quotation')" decoration-warning="state == 'paused'" decoration-danger="state == 'closed'"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Form View -->
+    <record id="view_subscription_subscription_form" model="ir.ui.view">
+        <field name="name">subscription.subscription.form</field>
+        <field name="model">subscription.subscription</field>
+        <field name="arch" type="xml">
+            <form string="Subscription">
+                <header>
+                    <button name="action_send_quotation" string="Send Quotation" type="object" class="oe_highlight" invisible="state != 'draft'"/>
+                    <button name="action_confirm" string="Confirm &amp; Activate" type="object" class="oe_highlight" invisible="state not in ('draft', 'quotation')"/>
+                    <button name="action_pause" string="Pause" type="object" invisible="state != 'active'"/>
+                    <button name="action_resume" string="Resume" type="object" class="oe_highlight" invisible="state != 'paused'"/>
+                    <button name="action_close" string="Close Subscription" type="object" invisible="state not in ('active', 'paused')"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,quotation,active,closed"/>
+                </header>
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group name="customer_info">
+                            <field name="partner_id"/>
+                            <field name="plan_id"/>
+                        </group>
+                        <group name="schedule_info">
+                            <field name="date_start"/>
+                            <field name="date_end"/>
+                            <field name="next_billing_date"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                            <field name="currency_id" invisible="1"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Subscription Lines" name="lines_page">
+                            <field name="line_ids">
+                                <tree editable="bottom">
+                                    <field name="product_id"/>
+                                    <field name="quantity"/>
+                                    <field name="currency_id" column_invisible="True"/>
+                                    <field name="price_unit"/>
+                                    <field name="price_subtotal" sum="Subtotal"/>
+                                </tree>
+                            </field>
+                            <group class="oe_subtotal_footer oe_right">
+                                <field name="amount_total" class="oe_subtotal_footer_separator"/>
+                            </group>
+                        </page>
+                        <page string="Internal Notes" name="notes_page">
+                            <field name="notes" placeholder="Contract conditions or notes..."/>
+                        </page>
+                    </notebook>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="activity_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <!-- Search View -->
+    <record id="view_subscription_subscription_search" model="ir.ui.view">
+        <field name="name">subscription.subscription.search</field>
+        <field name="model">subscription.subscription</field>
+        <field name="arch" type="xml">
+            <search string="Search Subscriptions">
+                <field name="name" string="Reference or Customer" filter_domain="['|', ('name', 'ilike', self), ('partner_id', 'ilike', self)]"/>
+                <field name="partner_id"/>
+                <field name="plan_id"/>
+                <separator/>
+                <filter string="Active" name="filter_active" domain="[('state', '=', 'active')]"/>
+                <filter string="Quotations" name="filter_quotation" domain="[('state', 'in', ('draft', 'quotation'))]"/>
+                <filter string="Paused" name="filter_paused" domain="[('state', '=', 'paused')]"/>
+                <group expand="0" string="Group By">
+                    <filter string="Customer" name="group_by_partner" context="{'group_by': 'partner_id'}"/>
+                    <filter string="Plan" name="group_by_plan" context="{'group_by': 'plan_id'}"/>
+                    <filter string="Status" name="group_by_state" context="{'group_by': 'state'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <!-- Action Window -->
+    <record id="action_subscription_subscriptions" model="ir.actions.act_window">
+        <field name="name">Subscriptions</field>
+        <field name="res_model">subscription.subscription</field>
+        <field name="view_mode">tree,form</field>
+        <field name="search_view_id" ref="view_subscription_subscription_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create a new subscription agreement or quotation!
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="menu_subscription_all_contracts"
+              name="Subscriptions"
+              parent="subscription_base.menu_subscription_operations"
+              action="action_subscription_subscriptions"
+              sequence="10"/>
+</odoo>

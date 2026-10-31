@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Root Menu for the Template / Subscriptions -->
+    <menuitem id="menu_subscription_template_root"
+              name="Subscription Template"
+              sequence="100"
+              web_icon="subscription_module_template,static/description/icon.png"/>
+
+    <!-- Categorized Submenus -->
+    <menuitem id="menu_subscription_template_main"
+              name="Operations"
+              parent="menu_subscription_template_root"
+              sequence="10"/>
+
+    <menuitem id="menu_subscription_template_item_action"
+              name="Template Items"
+              parent="menu_subscription_template_main"
+              action="action_subscription_template_item"
+              sequence="10"/>
+
+    <menuitem id="menu_subscription_template_configuration"
+              name="Configuration"
+              parent="menu_subscription_template_root"
+              sequence="90"
+              groups="group_subscription_template_manager"/>
+</odoo>

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Top-Level Root Application Menu for the whole Subscription System -->
+    <menuitem id="menu_subscription_root"
+              name="Subscriptions"
+              web_icon="subscription_base,static/description/icon.png"
+              sequence="25"/>
+
+    <!-- Shared Top-Level Submenus for Four Modules -->
+    <menuitem id="menu_subscription_operations"
+              name="Operations"
+              parent="menu_subscription_root"
+              sequence="10"/>
+
+    <menuitem id="menu_subscription_catalog_menu"
+              name="Catalog"
+              parent="menu_subscription_root"
+              sequence="20"/>
+
+    <menuitem id="menu_subscription_billing_menu"
+              name="Billing"
+              parent="menu_subscription_root"
+              sequence="30"/>
+
+    <menuitem id="menu_subscription_reporting_menu"
+              name="Reporting"
+              parent="menu_subscription_root"
+              sequence="40"/>
+
+    <menuitem id="menu_subscription_configuration_menu"
+              name="Configuration"
+              parent="menu_subscription_root"
+              sequence="90"
+              groups="group_subscription_manager"/>
+</odoo>

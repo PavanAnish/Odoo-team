@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="product_template_form_view_inherit_subscription" model="ir.ui.view">
+        <field name="name">product.template.form.inherit.subscription</field>
+        <field name="model">product.template</field>
+        <field name="inherit_id" ref="product.product_template_form_view"/>
+        <field name="arch" type="xml">
+            <xpath expr="//div[@name='options']" position="inside">
+                <span class="d-inline-block">
+                    <field name="is_subscription_product"/>
+                    <label for="is_subscription_product"/>
+                </span>
+            </xpath>
+            <xpath expr="//notebook" position="inside">
+                <page string="Subscription" name="subscription_config" invisible="not is_subscription_product">
+                    <group>
+                        <field name="subscription_plan_id"/>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Subscriptions Products Action and Menu -->
+    <record id="action_subscription_products" model="ir.actions.act_window">
+        <field name="name">Subscription Products</field>
+        <field name="res_model">product.template</field>
+        <field name="view_mode">kanban,tree,form</field>
+        <field name="domain">[('is_subscription_product', '=', True)]</field>
+        <field name="context">{'default_is_subscription_product': True}</field>
+    </record>
+
+    <menuitem id="menu_subscription_products"
+              name="Products"
+              parent="subscription_base.menu_subscription_catalog_menu"
+              action="action_subscription_products"
+              sequence="20"/>
+</odoo>
