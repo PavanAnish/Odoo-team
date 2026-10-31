@@ -9,8 +9,8 @@
         <field name="arch" type="xml">
             <tree string="Quotations &amp; Subscriptions"
                   default_order="date_quotation desc, id desc"
-                  decoration-muted="state in ('cancelled', 'closed')"
-                  decoration-warning="state == 'paused' or expiration_status == 'expiring_soon'"
+                  decoration-muted="state == 'closed'"
+                  decoration-warning="expiration_status == 'expiring_soon'"
                   decoration-success="state in ('confirmed', 'active')"
                   decoration-info="state in ('draft', 'quotation') and expiration_status == 'valid'"
                   decoration-danger="is_expired == True"
@@ -37,8 +37,7 @@
                 <field name="state" widget="badge"
                        decoration-info="state in ('draft', 'quotation')"
                        decoration-success="state in ('confirmed', 'active')"
-                       decoration-warning="state == 'paused'"
-                       decoration-danger="state in ('cancelled', 'closed')"/>
+                       decoration-muted="state == 'closed'"/>
             </tree>
         </field>
     </record>
@@ -52,8 +51,8 @@
         <field name="arch" type="xml">
             <form string="Subscription Quotation">
                 <header>
-                    <button name="action_send_quotation"
-                            string="Send Quotation"
+                    <button name="action_set_quotation"
+                            string="Set to Quotation"
                             type="object"
                             class="oe_highlight"
                             invisible="state != 'draft'"/>
@@ -61,7 +60,7 @@
                             string="Confirm"
                             type="object"
                             class="oe_highlight"
-                            invisible="state not in ('draft', 'quotation')"/>
+                            invisible="state != 'quotation'"/>
                     <button name="action_create_subscription"
                             string="Create Subscription"
                             type="object"
@@ -72,36 +71,19 @@
                             string="Activate Subscription"
                             type="object"
                             class="btn-success"
-                            invisible="state != 'confirmed' or is_converted"/>
-                    <button name="action_cancel"
-                            string="Cancel"
+                            invisible="state != 'confirmed'"/>
+                    <button name="action_close"
+                            string="Close Subscription"
                             type="object"
                             class="btn-secondary"
-                            invisible="state not in ('draft', 'quotation', 'confirmed')"/>
-                    <button name="action_reset_to_draft"
-                            string="Reset to Draft"
-                            type="object"
-                            invisible="state not in ('quotation', 'cancelled')"/>
-                    <button name="action_pause"
-                            string="Pause"
-                            type="object"
                             invisible="state != 'active'"/>
-                    <button name="action_resume"
-                            string="Resume"
-                            type="object"
-                            class="oe_highlight"
-                            invisible="state != 'paused'"/>
-                    <button name="action_close"
-                            string="Close Contract"
-                            type="object"
-                            invisible="state not in ('active', 'paused')"/>
-                    <field name="state" widget="statusbar" statusbar_visible="draft,quotation,confirmed,active"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,quotation,confirmed,active,closed"/>
                 </header>
                 <sheet>
                     <widget name="web_ribbon" title="Expired" bg_color="text-bg-warning"
                             invisible="not date_expiration or date_expiration &gt;= current_date or state in ('confirmed', 'active', 'closed')"/>
-                    <widget name="web_ribbon" title="Cancelled" bg_color="text-bg-danger"
-                            invisible="state != 'cancelled'"/>
+                    <widget name="web_ribbon" title="Closed" bg_color="text-bg-secondary"
+                            invisible="state != 'closed'"/>
                     <widget name="web_ribbon" title="Converted" bg_color="text-bg-success"
                             invisible="not is_converted"/>
 
@@ -202,6 +184,24 @@
                         <page string="Internal Notes" name="notes_page">
                             <field name="notes" placeholder="Internal terms, negotiation comments, and instructions..."/>
                         </page>
+
+                        <page string="Status History" name="status_history_page">
+                            <field name="history_ids" readonly="1">
+                                <tree string="Status History" create="0" edit="0" delete="0" default_order="change_date desc, id desc">
+                                    <field name="change_date" string="Date &amp; Time"/>
+                                    <field name="previous_state" string="Previous Status" widget="badge"
+                                           decoration-info="previous_state in ('draft', 'quotation')"
+                                           decoration-success="previous_state in ('confirmed', 'active')"
+                                           decoration-muted="previous_state == 'closed'"/>
+                                    <field name="new_state" string="New Status" widget="badge"
+                                           decoration-info="new_state in ('draft', 'quotation')"
+                                           decoration-success="new_state in ('confirmed', 'active')"
+                                           decoration-muted="new_state == 'closed'"/>
+                                    <field name="user_id" string="Changed By"/>
+                                    <field name="reason" string="Reason / Description"/>
+                                </tree>
+                            </field>
+                        </page>
                     </notebook>
                 </sheet>
                 <!-- Chatter & Activity Mixin -->
@@ -238,7 +238,7 @@
                 <filter string="Ready for Conversion" name="filter_ready_conversion" domain="[('state', '=', 'confirmed'), ('is_converted', '=', False)]"/>
                 <filter string="Converted to Subscription" name="filter_converted" domain="[('is_converted', '=', True)]"/>
                 <filter string="Active Subscriptions" name="filter_active" domain="[('state', '=', 'active')]"/>
-                <filter string="Cancelled" name="filter_cancelled" domain="[('state', '=', 'cancelled')]"/>
+                <filter string="Closed Subscriptions" name="filter_closed" domain="[('state', '=', 'closed')]"/>
                 <separator/>
                 <filter string="Expired Quotations" name="filter_expired"
                         domain="[('state', 'in', ('draft', 'quotation')), ('date_expiration', '&lt;', context_today)]"/>
@@ -264,13 +264,13 @@
     <!-- ===================================================================== -->
     <!-- Actions and Menus                                                     -->
     <!-- ===================================================================== -->
-    <!-- Action: Quotations (Draft, Sent, Cancelled) -->
+    <!-- Action: Quotations (Draft, Quotation) -->
     <record id="action_subscription_quotations" model="ir.actions.act_window">
         <field name="name">Quotations</field>
         <field name="res_model">subscription.subscription</field>
         <field name="view_mode">tree,form</field>
         <field name="search_view_id" ref="view_subscription_subscription_search"/>
-        <field name="domain">[('state', 'in', ('draft', 'quotation', 'cancelled'))]</field>
+        <field name="domain">[('state', 'in', ('draft', 'quotation'))]</field>
         <field name="context">{'default_state': 'draft'}</field>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">
@@ -282,13 +282,13 @@
         </field>
     </record>
 
-    <!-- Action: Subscriptions (Confirmed, Active, Paused, Closed) -->
+    <!-- Action: Subscriptions (Confirmed, Active, Closed) -->
     <record id="action_subscription_subscriptions" model="ir.actions.act_window">
         <field name="name">Subscriptions</field>
         <field name="res_model">subscription.subscription</field>
         <field name="view_mode">tree,form</field>
         <field name="search_view_id" ref="view_subscription_subscription_search"/>
-        <field name="domain">[('state', 'in', ('confirmed', 'active', 'paused', 'closed'))]</field>
+        <field name="domain">[('state', 'in', ('confirmed', 'active', 'closed'))]</field>
         <field name="context">{'default_state': 'confirmed'}</field>
         <field name="help" type="html">
             <p class="o_view_nocontent_smiling_face">

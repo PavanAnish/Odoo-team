@@ -30,12 +30,10 @@ class SubscriptionSubscription(models.Model):
     state = fields.Selection(
         selection=[
             ('draft', 'Draft'),
-            ('quotation', 'Quotation Sent'),
+            ('quotation', 'Quotation'),
             ('confirmed', 'Confirmed'),
             ('active', 'Active'),
-            ('paused', 'Paused'),
             ('closed', 'Closed'),
-            ('cancelled', 'Cancelled'),
         ],
         string='Status',
         required=True,
@@ -43,6 +41,22 @@ class SubscriptionSubscription(models.Model):
         tracking=True,
         copy=False,
     )
+    history_ids = fields.One2many(
+        'subscription.status.history',
+        'subscription_id',
+        string='Status History',
+        readonly=True,
+        help='Permanent audit trail of all status transitions for this subscription.'
+    )
+
+    # Strict business lifecycle transitions: Draft -> Quotation -> Confirmed -> Active -> Closed
+    VALID_STATE_TRANSITIONS = {
+        'draft': ['quotation'],
+        'quotation': ['confirmed'],
+        'confirmed': ['active'],
+        'active': ['closed'],
+        'closed': [],
+    }
 
     # --- Customer Information ---
     partner_id = fields.Many2one(
@@ -246,7 +260,7 @@ class SubscriptionSubscription(models.Model):
     # --- Access Control & Backend Security ---
     @api.model_create_multi
     def create(self, vals_list):
-        if not self.env.user.has_group('subscription_base.group_subscription_user'):
+        if not (self.env.user.has_group('subscription_base.group_subscription_user') or self.env.is_system() or self.env.su):
             raise AccessError(_("Access Denied: Only authorized internal staff can create subscription quotations."))
         for vals in vals_list:
             if vals.get('name', _('New')) == _('New'):
@@ -262,16 +276,52 @@ class SubscriptionSubscription(models.Model):
         for rec in records:
             rec._check_duplicate_reference()
             rec._validate_quotation_integrity()
+            # Record initial state audit history
+            self.env['subscription.status.history'].sudo().create({
+                'subscription_id': rec.id,
+                'previous_state': False,
+                'new_state': rec.state or 'draft',
+                'user_id': self.env.uid,
+                'change_date': fields.Datetime.now(),
+                'reason': _("Initial record creation in status '%s'") % (rec.state or 'draft').capitalize(),
+            })
         return records
 
     def write(self, vals):
-        if not self.env.user.has_group('subscription_base.group_subscription_user'):
+        if not (self.env.user.has_group('subscription_base.group_subscription_user') or self.env.is_system() or self.env.su):
             raise AccessError(_("Access Denied: Only authorized internal staff can edit subscription quotations."))
-        # Prevent editing locked / cancelled / closed records unless resetting or updating state
+
+        # Prevent editing locked / closed records unless updating notes
         for rec in self:
-            if rec.state in ('cancelled', 'closed') and not any(k in vals for k in ('state', 'notes')):
-                raise UserError(_("Cannot modify a cancelled or closed subscription record."))
+            if rec.state == 'closed' and not any(k in vals for k in ('state', 'notes')):
+                raise UserError(_("Cannot modify a closed subscription record."))
+
+        state_transitions = []
+        if 'state' in vals:
+            self._check_transition_permission()
+            new_state = vals['state']
+            for rec in self:
+                old_state = rec.state
+                if old_state != new_state:
+                    rec._validate_state_transition(old_state, new_state)
+                    state_transitions.append((rec, old_state, new_state))
+
         res = super().write(vals)
+
+        # Record audit history for each successful transition in the same transaction
+        for rec, old_state, new_state in state_transitions:
+            self.env['subscription.status.history'].sudo().create({
+                'subscription_id': rec.id,
+                'previous_state': old_state,
+                'new_state': new_state,
+                'user_id': self.env.uid,
+                'change_date': fields.Datetime.now(),
+                'reason': self.env.context.get('transition_reason') or _("Status transitioned from '%s' to '%s'") % (
+                    dict(self._fields['state'].selection).get(old_state, old_state),
+                    dict(self._fields['state'].selection).get(new_state, new_state),
+                ),
+            })
+
         for rec in self:
             rec._check_duplicate_reference()
             rec._validate_quotation_integrity()
@@ -352,6 +402,32 @@ class SubscriptionSubscription(models.Model):
                     raise ValidationError(_(
                         "Quotation '%s' has already been converted to another subscription."
                     ) % sub.quotation_id.name)
+
+    def _validate_state_transition(self, old_state, new_state):
+        """Validate whether the transition from old_state to new_state is allowed by business rules."""
+        self.ensure_one()
+        if old_state == new_state:
+            return True
+
+        allowed = self.VALID_STATE_TRANSITIONS.get(old_state, [])
+        if new_state not in allowed:
+            old_label = dict(self._fields['state'].selection).get(old_state, old_state)
+            new_label = dict(self._fields['state'].selection).get(new_state, new_state)
+            allowed_labels = [dict(self._fields['state'].selection).get(s, s) for s in allowed]
+            allowed_str = ', '.join(allowed_labels) if allowed_labels else _('None (Closed is terminal)')
+            raise ValidationError(_(
+                "Invalid status transition: Cannot transition subscription '%s' from '%s' to '%s'. "
+                "Allowed next status: %s."
+            ) % (self.name, old_label, new_label, allowed_str))
+        return True
+
+    def _check_transition_permission(self):
+        """Verify that the user is authorized to perform status changes."""
+        if self.env.is_system() or self.env.su:
+            return True
+        if not self.env.user.has_group('subscription_base.group_subscription_user'):
+            raise AccessError(_("Access Denied: Only authorized internal staff can modify subscription statuses."))
+        return True
 
     def _validate_quotation_integrity(self):
         """Comprehensive quotation validation covering customer, plan, dates, and quantities."""
@@ -496,24 +572,28 @@ class SubscriptionSubscription(models.Model):
 
     # --- Quotation Lifecycle Actions ---
 
-    def action_send_quotation(self):
-        """Transition quotation from draft to quotation sent."""
+    def action_set_quotation(self):
+        """Transition subscription from Draft to Quotation."""
+        self._check_transition_permission()
         for sub in self:
-            if sub.state != 'draft':
-                raise ValidationError(_("Only draft quotations can be marked as 'Quotation Sent'."))
+            sub._validate_state_transition(sub.state, 'quotation')
             if not sub.line_ids:
-                raise ValidationError(_("Cannot send a quotation without any product lines."))
+                raise ValidationError(_("Cannot move quotation '%s' to Quotation status without product lines.") % sub.name)
             sub._validate_expiration_date()
             sub._validate_quotation_integrity()
-            sub.state = 'quotation'
+            sub.write({'state': 'quotation'})
             sub.message_post(body=_("Quotation marked as sent to customer %s.") % sub.partner_id.name)
         return True
 
+    def action_send_quotation(self):
+        """Alias for action_set_quotation for backward compatibility."""
+        return self.action_set_quotation()
+
     def action_confirm(self):
-        """Confirm customer quotation and prepare for subscription activation."""
+        """Confirm customer quotation and move to Confirmed status."""
+        self._check_transition_permission()
         for sub in self:
-            if sub.state not in ('draft', 'quotation'):
-                raise ValidationError(_("Only draft or sent quotations can be confirmed."))
+            sub._validate_state_transition(sub.state, 'confirmed')
             if not sub.line_ids:
                 raise ValidationError(_("Cannot confirm a quotation without product lines."))
 
@@ -524,30 +604,55 @@ class SubscriptionSubscription(models.Model):
             if sub.discount_id and sub.discount_id.max_usage > 0:
                 sub.discount_id.usage_count += 1
 
-            sub.state = 'confirmed'
             if not sub.next_billing_date:
                 sub.next_billing_date = sub.date_start or fields.Date.context_today(sub)
 
+            sub.write({'state': 'confirmed'})
             sub.message_post(body=_("Quotation confirmed successfully with total %s.") % sub.amount_total)
         return True
 
     def action_activate(self):
-        """Activate a confirmed quotation or subscription into active status.
-        Kept for backward compatibility with existing tests and workflows."""
+        """Activate a confirmed quotation into an active subscription."""
+        self._check_transition_permission()
         for sub in self:
-            if sub.state != 'confirmed':
-                raise ValidationError(_("Only confirmed quotations can be activated into active subscriptions."))
+            sub._validate_state_transition(sub.state, 'active')
             if not sub.subscription_ref:
                 sub_number = self.env['ir.sequence'].next_by_code('subscription.subscription.active')
                 if not sub_number or sub_number in ('/', _('New'), 'False'):
                     year_str = str(fields.Date.context_today(self).year)
-                    sub_number = f"SUB/{year_str}/{sub.id or 1:05d}"
+                    sub_count = self.search_count([('name', 'like', 'SUB/%')]) + 1
+                    sub_number = f"SUB/{year_str}/{sub_count:05d}"
                 sub.subscription_ref = sub_number
             if not sub.date_subscription_end:
                 sub.date_subscription_end = sub._compute_subscription_end_date()
-            sub.state = 'active'
+            sub.write({'state': 'active'})
             sub.message_post(body=_("Subscription activated with reference %s.") % sub.subscription_ref)
         return True
+
+    def action_close(self, reason=None):
+        """Transition subscription from Active to Closed."""
+        self._check_transition_permission()
+        for sub in self:
+            sub._validate_state_transition(sub.state, 'closed')
+            # Critical billing protection: clear next_billing_date on closure
+            ctx = dict(self.env.context, transition_reason=reason or _("Closed subscription contract"))
+            sub.with_context(ctx).write({
+                'state': 'closed',
+                'next_billing_date': False,
+            })
+            close_msg = _("Subscription has been permanently closed.")
+            if reason:
+                close_msg += f" Reason: {reason}"
+            sub.message_post(body=close_msg)
+        return True
+
+    def action_cancel(self):
+        """Disallowed under strict lifecycle."""
+        raise ValidationError(_("Cancellation is not allowed under the strict lifecycle (Draft -> Quotation -> Confirmed -> Active -> Closed)."))
+
+    def action_reset_to_draft(self):
+        """Disallowed under strict lifecycle."""
+        raise ValidationError(_("Reset to draft is not allowed under the strict lifecycle (Draft -> Quotation -> Confirmed -> Active -> Closed)."))
 
     def action_create_subscription(self):
         """Convert confirmed quotation(s) into active subscription record(s).
@@ -713,24 +818,6 @@ class SubscriptionSubscription(models.Model):
         elif period == 'yearly':
             return start + relativedelta(years=interval)
         return start + relativedelta(months=1)
-
-    def action_cancel(self):
-        """Cancel an eligible draft or sent quotation."""
-        for sub in self:
-            if sub.state not in ('draft', 'quotation', 'confirmed'):
-                raise ValidationError(_("Only draft, sent, or confirmed quotations can be cancelled."))
-            sub.state = 'cancelled'
-            sub.message_post(body=_("Quotation has been cancelled."))
-        return True
-
-    def action_reset_to_draft(self):
-        """Reset cancelled or sent quotation back to draft."""
-        for sub in self:
-            if sub.state not in ('quotation', 'cancelled'):
-                raise ValidationError(_("Only sent or cancelled quotations can be reset to draft."))
-            sub.state = 'draft'
-            sub.message_post(body=_("Quotation reset to draft state."))
-        return True
 
     def _validate_expiration_date(self):
         """Reject confirmation or sending of expired quotations."""
