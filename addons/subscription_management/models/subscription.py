@@ -33,6 +33,7 @@ class SubscriptionSubscription(models.Model):
             ('quotation', 'Quotation'),
             ('confirmed', 'Confirmed'),
             ('active', 'Active'),
+            ('paused', 'Paused'),
             ('closed', 'Closed'),
         ],
         string='Status',
@@ -54,7 +55,8 @@ class SubscriptionSubscription(models.Model):
         'draft': ['quotation'],
         'quotation': ['confirmed'],
         'confirmed': ['active'],
-        'active': ['closed'],
+        'active': ['paused', 'closed'],
+        'paused': ['active'],
         'closed': [],
     }
 
@@ -154,6 +156,20 @@ class SubscriptionSubscription(models.Model):
         tracking=True,
         help='Calculated expiry date of the subscription, computed based on subscription start date and plan billing duration.'
     )
+
+    # --- Pause & Early Closure Tracking ---
+    date_paused = fields.Datetime(string='Pause Date', readonly=True, copy=False,
+        help='Timestamp when the subscription was last paused.')
+    date_resumed = fields.Datetime(string='Last Resume Date', readonly=True, copy=False,
+        help='Timestamp when the subscription was last resumed.')
+    date_closed_early = fields.Date(string='Early Closure Date', readonly=True, copy=False,
+        help='Date on which an early closure was enacted.')
+    pause_reason = fields.Text(string='Pause Reason', readonly=True, copy=False,
+        help='Reason provided when the subscription was paused.')
+    early_closure_reason = fields.Text(string='Early Closure Reason', readonly=True, copy=False,
+        help='Reason provided for early closure.')
+    total_paused_days = fields.Integer(string='Total Paused Days', default=0, copy=False, readonly=True,
+        help='Cumulative number of days this subscription has been paused across all pause/resume cycles.')
 
     # --- Subscription & Quotation Identification ---
     subscription_ref = fields.Char(
@@ -644,6 +660,72 @@ class SubscriptionSubscription(models.Model):
             if reason:
                 close_msg += f" Reason: {reason}"
             sub.message_post(body=close_msg)
+        return True
+
+    def action_pause(self, reason=None):
+        """Pause an active subscription. Requires plan.allow_pause=True."""
+        self._check_transition_permission()
+        for sub in self:
+            if sub.state != 'active':
+                raise ValidationError(_("Only active subscriptions can be paused. '%s' is currently '%s'.") % (sub.name, sub.state))
+            if not sub.plan_id.allow_pause:
+                raise ValidationError(_("The plan '%s' does not allow pausing subscriptions.") % sub.plan_id.name)
+            now = fields.Datetime.now()
+            ctx = dict(self.env.context, transition_reason=reason or _("Subscription paused"))
+            sub.with_context(ctx).write({
+                'state': 'paused',
+                'date_paused': now,
+                'pause_reason': reason or False,
+            })
+            sub.message_post(body=_("Subscription paused. Reason: %s") % (reason or _("Not specified")))
+        return True
+
+    def action_resume(self):
+        """Resume a paused subscription, adjusting next_billing_date per plan policy."""
+        self._check_transition_permission()
+        for sub in self:
+            if sub.state != 'paused':
+                raise ValidationError(_("Only paused subscriptions can be resumed. '%s' is currently '%s'.") % (sub.name, sub.state))
+            now = fields.Datetime.now()
+            pause_duration_days = 0
+            if sub.date_paused:
+                pause_duration_days = (now - sub.date_paused).days
+            new_next_billing = sub.next_billing_date
+            if (sub.plan_id.pause_billing_policy == 'shift'
+                    and sub.next_billing_date and pause_duration_days > 0):
+                new_next_billing = sub.next_billing_date + timedelta(days=pause_duration_days)
+            ctx = dict(self.env.context,
+                       transition_reason=_("Subscription resumed after %d paused day(s)") % pause_duration_days)
+            sub.with_context(ctx).write({
+                'state': 'active',
+                'date_resumed': now,
+                'next_billing_date': new_next_billing,
+                'total_paused_days': (sub.total_paused_days or 0) + pause_duration_days,
+            })
+            sub.message_post(body=_(
+                "Subscription resumed. Pause duration: %d day(s). Next billing: %s."
+            ) % (pause_duration_days, new_next_billing or _("Not scheduled")))
+        return True
+
+    def action_close_early(self, reason=None):
+        """Close an active subscription early. Requires plan.allow_early_closure=True and a reason."""
+        self._check_transition_permission()
+        for sub in self:
+            if sub.state != 'active':
+                raise ValidationError(_("Only active subscriptions can be closed early. '%s' is currently '%s'.") % (sub.name, sub.state))
+            if not sub.plan_id.allow_early_closure:
+                raise ValidationError(_("The plan '%s' does not allow early closure.") % sub.plan_id.name)
+            if not reason:
+                raise ValidationError(_("An early closure reason is required."))
+            today = fields.Date.context_today(self)
+            ctx = dict(self.env.context, transition_reason=reason)
+            sub.with_context(ctx).write({
+                'state': 'closed',
+                'date_closed_early': today,
+                'early_closure_reason': reason,
+                'next_billing_date': False,
+            })
+            sub.message_post(body=_("Subscription closed early on %s. Reason: %s") % (today, reason))
         return True
 
     def action_cancel(self):

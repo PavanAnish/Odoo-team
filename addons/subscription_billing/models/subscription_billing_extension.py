@@ -325,6 +325,10 @@ class SubscriptionSubscription(models.Model):
             raise UserError(_(
                 "Cannot generate invoice: Subscription '%s' has been closed and is permanently ineligible for billing."
             ) % self.name)
+        if self.state == 'paused':
+            raise UserError(_(
+                "Cannot generate invoice: Subscription '%s' is currently paused and billing is suspended."
+            ) % self.name)
         if self.state != 'active':
             state_label = dict(self._fields['state'].selection).get(self.state, self.state)
             raise UserError(_(

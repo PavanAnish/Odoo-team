@@ -34,6 +34,7 @@ class SubscriptionStatusHistory(models.Model):
             ('quotation', 'Quotation'),
             ('confirmed', 'Confirmed'),
             ('active', 'Active'),
+            ('paused', 'Paused'),
             ('closed', 'Closed'),
         ],
         string='Previous Status',
@@ -46,6 +47,7 @@ class SubscriptionStatusHistory(models.Model):
             ('quotation', 'Quotation'),
             ('confirmed', 'Confirmed'),
             ('active', 'Active'),
+            ('paused', 'Paused'),
             ('closed', 'Closed'),
         ],
         string='New Status',
@@ -73,6 +75,14 @@ class SubscriptionStatusHistory(models.Model):
         readonly=True,
         help='Operational context, reason or notes associated with this transition.'
     )
+
+    # --- Pause tracking fields (populated only for pause/resume transitions) ---
+    pause_start = fields.Datetime(string='Pause Start', readonly=True,
+        help='Timestamp when the pause began (set on active→paused transition).')
+    pause_end = fields.Datetime(string='Pause End', readonly=True,
+        help='Timestamp when the pause ended (set on paused→active transition).')
+    billing_adjustment_days = fields.Integer(string='Billing Adjustment (Days)', readonly=True,
+        help='Number of days next_billing_date was shifted due to this pause/resume cycle.')
 
     @api.model_create_multi
     def create(self, vals_list):

@@ -6,3 +6,4 @@ from . import test_quotation
 from . import test_expiration
 from . import test_subscription_creation
 from . import test_lifecycle
+from . import test_pause_resume_closure

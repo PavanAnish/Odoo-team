@@ -66,6 +66,28 @@ class SubscriptionPlan(models.Model):
         help='Set to false to deactivate the plan for new subscriptions.'
     )
 
+    # --- Pause & Early Closure Settings ---
+    allow_pause = fields.Boolean(
+        string='Allow Pause',
+        default=True,
+        help='Whether subscriptions on this plan can be paused temporarily.',
+    )
+    allow_early_closure = fields.Boolean(
+        string='Allow Early Closure',
+        default=True,
+        help='Whether subscriptions can be closed before their scheduled end date.',
+    )
+    pause_billing_policy = fields.Selection(
+        selection=[
+            ('shift', 'Shift Next Billing Date by Pause Duration'),
+            ('no_change', 'Keep Original Billing Schedule'),
+        ],
+        string='Pause Billing Policy',
+        default='shift',
+        required=True,
+        help='Determines how next_billing_date is adjusted when a subscription is resumed.',
+    )
+
     _sql_constraints = [
         ('code_unique', 'unique(code, company_id)', 'The plan code must be unique per company!')
     ]
