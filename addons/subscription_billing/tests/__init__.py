@@ -6,3 +6,4 @@ from . import test_invoice_calculator
 from . import test_invoice_status
 from . import test_payment_recording
 from . import test_balance_and_overdue
+from . import test_invoice_pdf_and_delivery

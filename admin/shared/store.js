@@ -105,6 +105,18 @@ export const D = {
     const isPaid = r[3] === 'Paid';
     const total = r[2];
     const initialPaid = isPaid ? total : (i === 2 ? 50 : 0);
+    const untaxedAmt = +(total / 1.18).toFixed(2);
+    const taxAmt = +(total - untaxedAmt).toFixed(2);
+    const custMap = {
+      'Northwind Co.': { email: 'ava@northwind.io', phone: '+1 (555) 010-9921', street: '1200 Pine St, Suite 400', city: 'Seattle', state: 'WA', zip: '98101', country: 'United States', vat: 'US-98129034' },
+      'Lumen Labs': { email: 'jo@lumen.dev', phone: '+1 (555) 018-4432', street: '450 Innovation Way', city: 'Austin', state: 'TX', zip: '78701', country: 'United States', vat: 'US-84729102' },
+      'Harbor & Pine': { email: 'tess@harborpine.com', phone: '+1 (555) 014-7721', street: '88 Waterfront Blvd', city: 'Boston', state: 'MA', zip: '02110', country: 'United States', vat: 'US-73829104' },
+      'Orbit Foods': { email: 'li@orbitfoods.co', phone: '+1 (555) 019-3321', street: '72 Market District', city: 'Chicago', state: 'IL', zip: '60607', country: 'United States', vat: 'US-62910293' },
+      'Kite Studio': { email: 'sam@kite.studio', phone: '+1 (555) 012-6654', street: '14 Design Quarter', city: 'Portland', state: 'OR', zip: '97201', country: 'United States', vat: 'US-51928374' },
+    };
+    const cInfo = custMap[r[1]] || { email: `${r[1].toLowerCase().replace(/[^a-z]/g, '')}@example.com`, phone: '+1 (555) 019-0000', street: '100 Business Parkway', city: 'San Francisco', state: 'CA', zip: '94105', country: 'United States', vat: 'US-10293847' };
+    const isSent = isPaid || i === 1;
+
     return {
       id: i + 1,
       n: r[0],
@@ -114,7 +126,28 @@ export const D = {
       residual: Math.max(0, total - initialPaid),
       st: r[3],
       due: r[4],
-      history: r[5] || []
+      history: r[5] || [],
+      lines: [
+        {
+          desc: `${r[1]} - Subscription Recurring Service (${r[0]})`,
+          qty: 1,
+          unitPrice: untaxedAmt,
+          disc: 0,
+          tax: 18,
+          subtotal: untaxedAmt
+        }
+      ],
+      untaxed: untaxedAmt,
+      tax: taxAmt,
+      discount: 0,
+      customer: {
+        name: r[1],
+        ...cInfo
+      },
+      sent: isSent,
+      sent_date: isSent ? '2026-10-02' : null,
+      recipient_email: cInfo.email,
+      delivery_status: isSent ? 'sent' : 'not_sent'
     };
   }),
 

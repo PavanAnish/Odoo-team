@@ -62,6 +62,9 @@
                 <field name="overdue_status" widget="badge" invisible="invoice_status == 'draft'"/>
                 <field name="invoice_sent" readonly="1" invisible="not invoice_sent"/>
                 <field name="invoice_sent_date" readonly="1" invisible="not invoice_sent"/>
+                <field name="invoice_recipient_email" readonly="1" invisible="not invoice_sent"/>
+                <field name="invoice_delivery_status" widget="badge" invisible="invoice_status == 'draft'"/>
+                <field name="invoice_delivery_error" invisible="invoice_delivery_status != 'failed'"/>
             </xpath>
 
             <!-- Notebook Pages: Payments & Lifecycle History -->
