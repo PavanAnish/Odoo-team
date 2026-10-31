@@ -1,4 +1,4 @@
-import { D, S, M, ds, getFinancialSummary } from '../shared/store.js';
+import { D, S, M, ds, LIVE, getFinancialSummary } from '../shared/store.js';
 
 export const spark = (v, c = '#A47551') => {
   const m = Math.max(...v);
@@ -22,12 +22,22 @@ export const area = (v, c, w = 600, h = 200) => {
 
 export function dash() {
   const summary = getFinancialSummary(D.invoices);
+  // Use real backend stats when connected, fall back to local summary
+  const live = LIVE && D._dash;
   const od = D.invoices.filter(i => ds(i) === 'Overdue');
-  const odA = summary.totalOverdue;
-  const paid = summary.totalPaid;
-  const out = summary.totalOutstanding;
+  const odA = live ? (D._dash.invoices.overdue_amount || summary.totalOverdue) : summary.totalOverdue;
+  const paid = live ? D._dash.revenue.collected : summary.totalPaid;
+  const out = live ? D._dash.revenue.outstanding : summary.totalOutstanding;
+  const activeSubs = live ? D._dash.subscriptions.active : D.subs.filter(s => s.st === 'Active').length;
+  const overdueCount = live ? D._dash.invoices.overdue : od.length;
+  const totalRev = live ? D._dash.revenue.collected : 94200;
+  const mrr = live ? Math.round(D._dash.revenue.collected / 12) : 58400;
 
-  const ST = ['Draft', 'Quotation', 'Confirmed', 'Active', 'Closed'];
+  // Monthly revenue chart data from backend
+  const monthlyRev = (live && D._dash.revenue.monthly) ? D._dash.revenue.monthly.map(m => m.amount) : null;
+  const mo = monthlyRev || [42, 47, 51, 49, 58, 63, 66, 71, 75, 82, 88, 94];
+
+  const ST = ['Draft', 'Quotation', 'Confirmed', 'Active', 'Paused', 'Closed'];
   const cl = ['#EDE3D8', '#D9A441', '#C9A88A', '#7E9C88', '#A29789'];
   const cn = ST.map(s => D.subs.filter(x => x.st === s).length);
   let a = 0;
@@ -37,7 +47,6 @@ export function dash() {
     return `${cl[i]} ${s}% ${a}%`;
   }).join(',');
 
-  const mo = [42, 47, 51, 49, 58, 63, 66, 71, 75, 82, 88, 94];
   const qt = [140, 170, 212, 264];
   const mm = S.rev === 'Month' ? mo : qt;
   const mm2 = mm.map(x => x * 0.62);
@@ -46,12 +55,12 @@ export function dash() {
   const content = `
 <p class="mut" style="margin-bottom:16px">Welcome back, Maya. Here is how billing looks today.</p>
 <div class="g g4">
-  ${kpi('Active subscriptions', D.subs.filter(s => s.st === 'Active').length, '', 8.2, [3, 4, 4, 5, 6, 7, 8])}
-  ${kpi('Total revenue', 94200, '$', 12.4, mo.slice(4, 11))}
-  ${kpi('MRR', 58400, '$', 6.1, [40, 44, 45, 50, 52, 55, 58])}
-  ${kpi('Overdue invoices', od.length, '', -3.5, [1, 3, 2, 2, 4, 3, 2])}
+  ${kpi('Active subscriptions', activeSubs, '', 8.2, [3, 4, 4, 5, 6, 7, 8])}
+  ${kpi('Total revenue', totalRev, '$', 12.4, mo.slice(-7))}
+  ${kpi('MRR', mrr, '$', 6.1, [40, 44, 45, 50, 52, 55, 58])}
+  ${kpi('Overdue invoices', overdueCount, '', -3.5, [1, 3, 2, 2, 4, 3, 2])}
 </div>
-<p class="mut" style="margin:-8px 0 16px">Overdue amount: <b>${M(odA)}</b> across ${od.length} invoices</p>
+<p class="mut" style="margin:-8px 0 16px">Overdue amount: <b>${M(odA)}</b> across ${overdueCount} invoices</p>
 
 <div class="g g2" style="grid-template-columns:2fr 1fr">
   <div class="card">

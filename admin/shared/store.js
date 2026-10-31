@@ -467,3 +467,173 @@ export function crud(k) {
     `<div class="tb"><input placeholder="Search ${o.t.toLowerCase()}…" aria-label="Search" value="${S.q[k] || ''}" oninput="S.q['${k}']=this.value;R(1)">${k === 'products' ? `<button class="btn o" onclick="S.view=S.view==='grid'?'table':'grid';R()">${S.view === 'grid' ? 'Table' : 'Grid'} view</button>` : ''}${k === 'customers' ? `<button class="btn o" onclick="toast('Invites sent to selected customers')">Bulk invite</button>` : ''}</div><div id="tbl">${grid}</div>`
   ];
 }
+
+
+// ── Backend Integration ───────────────────────────────────────────────
+// LIVE = true when the SPA is served from Odoo and the API responds.
+export let LIVE = false;
+
+/**
+ * loadData() — fetch real data from the Odoo backend and merge into D.
+ * Falls back silently to existing mock data if the API is unreachable.
+ * Called once at boot and after any mutation action that needs a refresh.
+ */
+export async function loadData() {
+  try {
+    // Import api module (dynamic to avoid breaking standalone open)
+    const api = await import('./api.js');
+
+    // Dashboard metrics
+    const dash = await api.fetchDashboard();
+    if (dash && !dash.error) {
+      LIVE = true;
+      D._dash = dash; // cached for dashboard.js to read
+    }
+
+    // Customers
+    const custRes = await api.fetchCustomers('', 200);
+    if (custRes && !custRes.error && custRes.records) {
+      D.customers = custRes.records.map(r => ({
+        id: r.id,
+        name: r.name,
+        email: r.email || '',
+        company: r.company_name || '',
+        portal: 0,
+        subs: r.subs || 0,
+        ltv: 0,
+        status: r.status || 'Active',
+      }));
+    }
+
+    // Products
+    const prodRes = await api.fetchProducts('', 200);
+    if (prodRes && !prodRes.error && prodRes.records) {
+      D.products = prodRes.records.map(r => ({
+        id: r.id,
+        name: r.name,
+        type: r.type || 'service',
+        price: r.price || 0,
+        cost: r.cost || 0,
+        notes: r.notes || '',
+        variants: [],
+      }));
+    }
+
+    // Plans
+    const planRes = await api.fetchPlans('', 200);
+    if (planRes && !planRes.error && planRes.records) {
+      D.plans = planRes.records.map(r => ({
+        id: r.id,
+        name: r.name,
+        freq: r.billing_period || 'monthly',
+        minQty: r.min_quantity || 1,
+        start: r.date_start || '',
+        end: r.date_end || '',
+        pause: r.allow_pause ? 1 : 0,
+        renew: r.allow_renewal ? 1 : 0,
+        autoClose: r.auto_closure ? 1 : 0,
+        autoRenew: r.auto_renewal ? 1 : 0,
+        products: '',
+      }));
+    }
+
+    // Subscriptions
+    const subRes = await api.fetchSubscriptions('', '', 200);
+    if (subRes && !subRes.error && subRes.records) {
+      D.subs = subRes.records.map(r => ({
+        id: r.id,
+        n: r.subscription_ref || r.name,
+        c: r.partner_id ? r.partner_id[1] : '',
+        plan: r.plan_id ? r.plan_id[1] : '',
+        st: _stateLabel(r.state),
+        amt: r.amount_total || 0,
+        next: r.next_billing_date || '',
+        paused: r.state === 'paused' ? 1 : 0,
+        state: r.state,
+        _id: r.id,
+      }));
+    }
+
+    // Quotations
+    const quoRes = await api.fetchQuotations('', 200);
+    if (quoRes && !quoRes.error && quoRes.records) {
+      D.quotes = quoRes.records.map(r => ({
+        id: r.id,
+        n: r.name,
+        customer: r.partner_id ? r.partner_id[1] : '',
+        plan: r.plan_id ? r.plan_id[1] : '',
+        product: '',
+        qty: 1,
+        disc: 0,
+        tax: 0,
+        st: _quoStateLabel(r.state, r.is_converted),
+        expiry: r.date_expiration || '',
+        expiry_status: r.expiration_status || 'valid',
+        converted: r.is_converted,
+        sub_id: r.subscription_id ? r.subscription_id[0] : null,
+        amount: r.amount_total || 0,
+      }));
+    }
+
+    // Invoices
+    const invRes = await api.fetchInvoices('', '', 200);
+    if (invRes && !invRes.error && invRes.records) {
+      D.invoices = invRes.records.map(r => ({
+        id: r.id,
+        n: r.name,
+        c: r.partner_id ? r.partner_id[1] : '',
+        amt: r.amount_total || 0,
+        paid: r.payment_state === 'paid' ? (r.amount_total || 0) : 0,
+        residual: r.amount_residual || 0,
+        st: r.ui_state || r.payment_state || 'Draft',
+        due: r.invoice_date_due || '',
+        history: [],
+        _odoo_id: r.id,
+      }));
+    }
+
+    // Taxes
+    const taxRes = await api.fetchTaxes('', 200);
+    if (taxRes && !taxRes.error && taxRes.records) {
+      D.taxes = taxRes.records.map(r => ({
+        id: r.id,
+        name: r.name,
+        rate: r.amount || 0,
+        scope: 'all',
+        on: r.active ? 1 : 0,
+      }));
+    }
+
+    // Discounts
+    const discRes = await api.fetchDiscounts('', 200);
+    if (discRes && !discRes.error && discRes.records && discRes.records.length) {
+      D.discounts = discRes.records.map(r => ({
+        id: r.id,
+        name: r.name,
+        type: r.discount_type || 'percentage',
+        value: r.discount_value || 0,
+        minPurchase: 0,
+        minQty: 1,
+        start: r.date_start || '',
+        end: r.date_end || '',
+        limit: 100,
+        used: 0,
+        scope: 'all',
+        on: r.active ? 1 : 0,
+      }));
+    }
+
+    if (LIVE && typeof window.R === 'function') window.R();
+  } catch (e) {
+    console.warn('[Admin] loadData failed, using mock data:', e.message);
+  }
+}
+
+// Map Odoo state → UI label
+function _stateLabel(state) {
+  return { draft: 'Draft', quotation: 'Quotation', confirmed: 'Confirmed', active: 'Active', paused: 'Paused', closed: 'Closed' }[state] || state;
+}
+function _quoStateLabel(state, converted) {
+  if (converted) return 'Converted';
+  return _stateLabel(state);
+}

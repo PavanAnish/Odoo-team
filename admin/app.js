@@ -1,7 +1,7 @@
 import {
   $, M, TODAY, BC, B, IC, NAV, slug, D, S, ds, dO,
   toast, modal, X, confirmD, form, del, tog, crud,
-  currentUser, logInvoiceHistory,
+  currentUser, logInvoiceHistory, loadData,
   isUnpaid, isPartial, isFullyPaid, isOverdue, getFinancialSummary
 } from './shared/store.js';
 
@@ -153,5 +153,5 @@ window.addEventListener('keydown', e => {
   }
 });
 
-// Initial boot
-go();
+// Initial boot — load real backend data then render
+loadData().then(() => go()).catch(() => go());
