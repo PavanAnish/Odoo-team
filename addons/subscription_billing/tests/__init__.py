@@ -4,3 +4,4 @@
 from . import test_billing
 from . import test_invoice_calculator
 from . import test_invoice_status
+from . import test_payment_recording

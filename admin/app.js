@@ -15,7 +15,8 @@ import { subs, subD } from './subscriptions/subscriptions.js';
 import {
   invs, pay, invD,
   confirmInvoice, cancelInvoice, sendInvoice,
-  printInvoice, downloadInvoice, deleteInvoice, runBilling
+  printInvoice, downloadInvoice, deleteInvoice, runBilling,
+  viewPaymentDetails
 } from './invoices/invoices.js';
 
 // Router mapping
@@ -128,6 +129,7 @@ window.printInvoice = printInvoice;
 window.downloadInvoice = downloadInvoice;
 window.deleteInvoice = deleteInvoice;
 window.runBilling = runBilling;
+window.viewPaymentDetails = viewPaymentDetails;
 window.currentUser = currentUser;
 window.logInvoiceHistory = logInvoiceHistory;
 window.P = P;

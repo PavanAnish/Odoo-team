@@ -9,7 +9,8 @@ _logger = logging.getLogger(__name__)
 
 
 class AccountMove(models.Model):
-    """Extend account.move to manage subscription invoice statuses, transitions, protection, and audit history."""
+    """Extend account.move to manage subscription invoice statuses, transitions,
+    payments, protection, and audit history."""
     _inherit = 'account.move'
 
     # --- Core Subscription Linkage ---
@@ -105,6 +106,34 @@ class AccountMove(models.Model):
         help='Timestamp when the invoice was sent to the customer.'
     )
 
+    # --- Payment Tracking & Balances ---
+    payment_ids = fields.One2many(
+        'account.payment',
+        'invoice_id',
+        string='Recorded Payments',
+        readonly=True,
+        copy=False,
+        help='History of all payments recorded against this invoice.'
+    )
+    payment_count = fields.Integer(
+        string='Payment Count',
+        compute='_compute_payment_count',
+    )
+    amount_paid = fields.Monetary(
+        string='Total Paid',
+        compute='_compute_payments_and_residual',
+        store=True,
+        copy=False,
+        help='Total monetary amount received from payments on this invoice.'
+    )
+    amount_residual = fields.Monetary(
+        string='Remaining Balance',
+        compute='_compute_payments_and_residual',
+        store=True,
+        copy=False,
+        help='Remaining unpaid balance on this invoice.'
+    )
+
     PROTECTED_FINALIZED_FIELDS = {
         'invoice_line_ids',
         'line_ids',
@@ -128,6 +157,26 @@ class AccountMove(models.Model):
     def _compute_history_count(self):
         for move in self:
             move.history_count = len(move.history_ids)
+
+    @api.depends('payment_ids.amount', 'payment_ids.state', 'amount_total', 'subscription_amount_total')
+    def _compute_payments_and_residual(self):
+        for move in self:
+            payments = move.payment_ids.filtered(lambda p: getattr(p, 'state', None) != 'cancel')
+            total_paid = sum(p.amount for p in payments)
+            move.amount_paid = total_paid
+            total = move.amount_total or move.subscription_amount_total or 0.0
+            move.amount_residual = max(0.0, round(total - total_paid, 2))
+            if move.amount_residual == 0.0 and total > 0 and total_paid > 0:
+                move.payment_state = 'paid'
+            elif total_paid > 0:
+                move.payment_state = 'partial'
+            else:
+                move.payment_state = 'not_paid'
+
+    @api.depends('payment_ids')
+    def _compute_payment_count(self):
+        for move in self:
+            move.payment_count = len(move.payment_ids)
 
     # --- Audit History Helper ---
     def _log_history(self, action, previous_status, current_status, details=None):
@@ -240,15 +289,6 @@ class AccountMove(models.Model):
                 vals.setdefault('state', 'cancel')
 
         res = super().write(vals)
-
-        # Log history if status was updated directly
-        if new_status:
-            for move in self:
-                if vals.get('_skip_history_log'):
-                    continue
-                # History is logged inside the action methods, but log here if called via direct write
-                pass
-
         return res
 
     def unlink(self):
@@ -392,7 +432,41 @@ class AccountMove(models.Model):
             )
         return True
 
-    def action_mark_paid(self, payment_ref=None, payment_date=None, amount=None):
+    def action_register_payment(self, amount=None, payment_date=None, payment_method='bank_transfer', ref=None, notes=None):
+        """Record a validated payment against this invoice.
+        Stores method, amount, date, notes, links to invoice, validates amount, and prevents duplicates."""
+        self.ensure_one()
+        if self.invoice_status != 'confirmed':
+            raise ValidationError(_(
+                "Cannot record payment for invoice '%s' in '%s' status. Only confirmed invoices accept payments."
+            ) % (self.name or self.id, self.invoice_status.capitalize()))
+
+        residual = self.amount_residual if hasattr(self, 'amount_residual') and self.amount_residual > 0 else (self.amount_total or self.subscription_amount_total or 0.0)
+        pay_amount = amount if amount is not None else residual
+
+        if pay_amount <= 0:
+            raise ValidationError(_("Payment amount must be strictly greater than zero."))
+
+        if round(pay_amount - residual, 2) > 0.00:
+            raise ValidationError(_(
+                "Payment amount (%(amt)s) exceeds the remaining balance (%(bal)s) on invoice '%(inv)s'."
+            ) % {
+                'amt': pay_amount,
+                'bal': residual,
+                'inv': self.name or self.id,
+            })
+
+        payment_vals = {
+            'invoice_id': self.id,
+            'amount': pay_amount,
+            'payment_date': payment_date or fields.Date.context_today(self),
+            'payment_method': payment_method or 'bank_transfer',
+            'payment_reference': ref,
+            'notes': notes or '',
+        }
+        return self.env['account.payment'].create(payment_vals)
+
+    def action_mark_paid(self, payment_ref=None, payment_date=None, amount=None, payment_method='bank_transfer', notes=None):
         """Mark invoice as Paid: validated flow permitted only for Confirmed invoices."""
         for move in self:
             if move.invoice_status == 'draft':
@@ -416,29 +490,45 @@ class AccountMove(models.Model):
                     "Invalid status for payment: Invoice '%s' must be in Confirmed status (current: '%s')."
                 ) % (move.name or move.id, move.invoice_status.capitalize()))
 
-            prev = move.invoice_status
-            move.write({
-                'invoice_status': 'paid',
-                'payment_state': 'paid',
-                'state': 'posted',
-                '_skip_history_log': True,
-            })
-            detail_str = _("Invoice marked as fully paid.")
-            if payment_ref:
-                detail_str += _(" Payment Ref: %s") % payment_ref
-            if amount is not None:
-                detail_str += _(" Amount: %s") % amount
-            move._log_history(
-                action='register_payment',
-                previous_status=prev,
-                current_status='paid',
-                details=detail_str
+            residual = move.amount_residual if hasattr(move, 'amount_residual') and move.amount_residual > 0 else (move.amount_total or move.subscription_amount_total or 0.0)
+            pay_amt = amount if amount is not None else residual
+
+            move.action_register_payment(
+                amount=pay_amt,
+                payment_date=payment_date,
+                payment_method=payment_method,
+                ref=payment_ref,
+                notes=notes or _("Full settlement payment")
             )
         return True
 
-    def action_register_payment(self, amount=None, payment_date=None, payment_method=None, ref=None):
-        """Validated payment registration wrapper."""
-        return self.action_mark_paid(payment_ref=ref, payment_date=payment_date, amount=amount)
+    def action_view_payments(self):
+        """Open all payments recorded for this invoice (restricted to authorized users)."""
+        self.ensure_one()
+        user = self.env.user
+        if not getattr(self.env, 'su', False) and hasattr(user, 'has_group'):
+            authorized_groups = (
+                'subscription_base.group_subscription_user',
+                'subscription_base.group_subscription_manager',
+                'account.group_account_invoice',
+                'account.group_account_manager',
+            )
+            if not any(user.has_group(g) for g in authorized_groups):
+                raise AccessError(_("Access Denied: Only authorized users can view payment details."))
+
+        payments = self.payment_ids
+        action = {
+            'name': _('Invoice Payments'),
+            'type': 'ir.actions.act_window',
+            'res_model': 'account.payment',
+            'view_mode': 'tree,form',
+            'domain': [('invoice_id', '=', self.id)],
+            'context': {'default_invoice_id': self.id, 'default_partner_id': self.partner_id.id},
+        }
+        if len(payments) == 1:
+            action['views'] = [(False, 'form')]
+            action['res_id'] = payments.id
+        return action
 
     def action_send_invoice(self):
         """Send invoice to customer: available only for valid states (Confirmed, Paid)."""

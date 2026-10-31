@@ -99,7 +99,37 @@ export const D = {
     ['INV-2046', 'Northwind Co.', 2832, 'Draft', '2026-11-15', [
       { t: '2026-10-30 16:30', a: 'System', act: 'Created', from: null, to: 'Draft', d: 'Draft invoice created' }
     ]]
-  ].map((r, i) => ({ id: i + 1, n: r[0], c: r[1], amt: r[2], st: r[3], due: r[4], history: r[5] || [] }))
+  ].map((r, i) => {
+    const isPaid = r[3] === 'Paid';
+    const total = r[2];
+    return {
+      id: i + 1,
+      n: r[0],
+      c: r[1],
+      amt: total,
+      paid: isPaid ? total : 0,
+      residual: isPaid ? 0 : total,
+      st: r[3],
+      due: r[4],
+      history: r[5] || []
+    };
+  }),
+
+  payments: [
+    {
+      id: 1,
+      invId: 1,
+      n: 'PAY-1001',
+      inv: 'INV-2041',
+      c: 'Northwind Co.',
+      amt: 2832,
+      m: 'Bank transfer',
+      d: '2026-10-05',
+      ref: 'TXN-4491',
+      notes: 'Full settlement via wire transfer.',
+      user: 'Admin User'
+    }
+  ]
 };
 
 export const S = { q: {}, sort: {}, tab: 'All', view: 'table', sel: null, rev: 'Month', view2: 'table', qt: 'Quotations', inv: null };
