@@ -1,4 +1,4 @@
-import { D, S, M, ds, LIVE } from '../shared/store.js';
+import { D, S, M, ds, LIVE, getFinancialSummary } from '../shared/store.js';
 
 export const spark = (v, c = '#A47551') => {
   const m = Math.max(...v);
@@ -21,12 +21,13 @@ export const area = (v, c, w = 600, h = 200) => {
 };
 
 export function dash() {
-  // Use real backend stats when connected, fall back to mock D data
+  const summary = getFinancialSummary(D.invoices);
+  // Use real backend stats when connected, fall back to local summary
   const live = LIVE && D._dash;
   const od = D.invoices.filter(i => ds(i) === 'Overdue');
-  const odA = live ? (D._dash.invoices.overdue_amount || od.reduce((a, i) => a + i.amt, 0)) : od.reduce((a, i) => a + i.amt, 0);
-  const paid = live ? D._dash.revenue.collected : D.invoices.filter(i => i.st === 'Paid').reduce((a, i) => a + i.amt, 0);
-  const out = live ? D._dash.revenue.outstanding : D.invoices.filter(i => ds(i) === 'Confirmed').reduce((a, i) => a + i.amt, 0);
+  const odA = live ? (D._dash.invoices.overdue_amount || summary.totalOverdue) : summary.totalOverdue;
+  const paid = live ? D._dash.revenue.collected : summary.totalPaid;
+  const out = live ? D._dash.revenue.outstanding : summary.totalOutstanding;
   const activeSubs = live ? D._dash.subscriptions.active : D.subs.filter(s => s.st === 'Active').length;
   const overdueCount = live ? D._dash.invoices.overdue : od.length;
   const totalRev = live ? D._dash.revenue.collected : 94200;
