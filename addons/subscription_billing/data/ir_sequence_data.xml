@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <!-- Sequence for Subscription Invoices (Fallback / Auto Numbering) -->
+        <record id="seq_subscription_invoice" model="ir.sequence">
+            <field name="name">Subscription Invoice Sequence</field>
+            <field name="code">subscription.invoice</field>
+            <field name="prefix">INV/%(year)s/</field>
+            <field name="padding">5</field>
+            <field name="company_id" eval="False"/>
+        </record>
+    </data>
+</odoo>

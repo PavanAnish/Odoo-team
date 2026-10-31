@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Extend account.move form view -->
+    <!-- Extend account.move form view with subscription details -->
     <record id="view_move_form_inherit_subscription" model="ir.ui.view">
         <field name="name">account.move.form.inherit.subscription</field>
         <field name="model">account.move</field>
@@ -8,6 +8,42 @@
         <field name="arch" type="xml">
             <xpath expr="//field[@name='ref']" position="after">
                 <field name="subscription_id" readonly="1" invisible="not subscription_id"/>
+                <field name="subscription_billing_date" readonly="1" invisible="not subscription_id"/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Extend subscription form view with invoice generation button, stat button, and line discount/taxes -->
+    <record id="view_subscription_form_inherit_billing" model="ir.ui.view">
+        <field name="name">subscription.subscription.form.inherit.billing</field>
+        <field name="model">subscription.subscription</field>
+        <field name="inherit_id" ref="subscription_management.view_subscription_subscription_form"/>
+        <field name="arch" type="xml">
+            <!-- Header button: manual invoice generation for active contracts -->
+            <xpath expr="//header" position="inside">
+                <button name="action_generate_invoice"
+                        string="Generate Invoice"
+                        type="object"
+                        class="oe_highlight"
+                        invisible="state != 'active'"/>
+            </xpath>
+
+            <!-- Stat button: invoice counter and drilldown -->
+            <xpath expr="//sheet/div[@class='oe_title']" position="before">
+                <div class="oe_button_box" name="button_box">
+                    <button name="action_view_invoices"
+                            type="object"
+                            class="oe_stat_button"
+                            icon="fa-pencil-square-o">
+                        <field name="invoice_count" widget="statinfo" string="Invoices"/>
+                    </button>
+                </div>
+            </xpath>
+
+            <!-- Line discount and taxes in subscription lines tree -->
+            <xpath expr="//field[@name='line_ids']/tree/field[@name='price_unit']" position="after">
+                <field name="discount" optional="show"/>
+                <field name="tax_ids" widget="many2many_tags" optional="show"/>
             </xpath>
         </field>
     </record>
