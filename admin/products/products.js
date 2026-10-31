@@ -88,6 +88,17 @@ async function loadProducts(silent = false) {
     productState.totalCount = res.data.total || productState.products.length;
     productState.canViewCost = res.data.can_view_cost ?? true;
     productState.canEdit = res.data.can_edit ?? true;
+    if (D && D.products) {
+      D.products = productState.products.map(p => ({
+        id: p.id,
+        name: p.name,
+        type: p.type_label || p.type || 'Service',
+        price: p.price || 0,
+        cost: p.cost || 0,
+        notes: p.notes || '',
+        variants: p.variants || []
+      }));
+    }
   } else {
     productState.backendConnected = false;
     productState.lastError = res.message || 'Cannot communicate with Odoo backend.';

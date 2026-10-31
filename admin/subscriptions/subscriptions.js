@@ -45,7 +45,7 @@ export function subD(s) {
   <div class="stp">${ST.map((x, j) => `<div class="${j < i ? 'dn2' : j === i ? 'cur' : ''}">${x}</div>`).join('')}</div>
   <p><b>Customer</b> ${s.c} &nbsp; <b>Plan</b> ${s.plan} &nbsp; <b>Billing</b> ${M(s.amt)} · next ${s.next || '—'}</p>
   <div class="tb" style="margin-top:16px">
-    ${s.st === 'Draft' ? `<button class="btn" onclick="window._subAction(${s.id},'confirm')">Confirm</button>` : ''}
+    ${(s.st === 'Draft' || s.st === 'Quotation') ? `<button class="btn" onclick="window._subAction(${s.id},'confirm')">Confirm</button>` : ''}
     ${s.st === 'Confirmed' ? `<button class="btn" onclick="window._subAction(${s.id},'activate')">Activate</button>` : ''}
     ${s.st === 'Active' && !s.paused ? `<button class="btn o" onclick="window._subAction(${s.id},'pause')">Pause</button>` : ''}
     ${s.paused ? `<button class="btn o" onclick="window._subAction(${s.id},'resume')">Resume</button>` : ''}
