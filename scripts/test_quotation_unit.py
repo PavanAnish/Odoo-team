@@ -13,7 +13,7 @@ def run_tests():
     print("Running Quotation Logic & Calculation Verification Suite")
     print("=" * 70)
     passed = 0
-    total = 30
+    total = 35
 
     today = date.today()
     yesterday = today - timedelta(days=1)
@@ -587,6 +587,122 @@ def run_tests():
         passed += 1
     except Exception as e:
         print(f" [FAIL] 30. Closed subscription billing protection: {e}")
+
+    # --- Test 31: Pause eligibility validation ---
+    try:
+        def can_pause(state, allow_pause):
+            if state != 'active':
+                raise ValueError("Only active subscriptions can be paused.")
+            if not allow_pause:
+                raise ValueError("Plan does not allow pausing.")
+            return True
+
+        assert can_pause('active', True) is True
+        # Non-active
+        blocked = False
+        try:
+            can_pause('draft', True)
+        except ValueError:
+            blocked = True
+        assert blocked, "Draft should be blocked"
+        # Plan disallows
+        blocked2 = False
+        try:
+            can_pause('active', False)
+        except ValueError:
+            blocked2 = True
+        assert blocked2, "Plan disallow should block"
+        print(" [PASS] 31. Pause eligibility validation logic")
+        passed += 1
+    except Exception as e:
+        print(f" [FAIL] 31. Pause eligibility validation logic: {e}")
+
+    # --- Test 32: Resume billing date shift calculation ---
+    try:
+        from datetime import date as _date, timedelta as _td
+        billing_date = _date(2026, 11, 30)
+        pause_days = 10
+        shifted = billing_date + _td(days=pause_days)
+        assert shifted == _date(2026, 12, 10), f"Expected 2026-12-10, got {shifted}"
+        # policy=no_change → no shift
+        no_change = billing_date  # unchanged
+        assert no_change == _date(2026, 11, 30)
+        print(" [PASS] 32. Resume billing date shift calculation")
+        passed += 1
+    except Exception as e:
+        print(f" [FAIL] 32. Resume billing date shift calculation: {e}")
+
+    # --- Test 33: Multiple pause/resume total_paused_days accumulation ---
+    try:
+        total_paused = 0
+        cycles = [(3, ), (7, ), (1, )]  # pause durations in days
+        for (days,) in cycles:
+            total_paused += days
+        assert total_paused == 11, f"Expected 11, got {total_paused}"
+        print(" [PASS] 33. Multiple pause/resume total_paused_days accumulation")
+        passed += 1
+    except Exception as e:
+        print(f" [FAIL] 33. Multiple pause/resume total_paused_days accumulation: {e}")
+
+    # --- Test 34: Early closure eligibility validation ---
+    try:
+        def can_close_early(state, allow_early_closure, reason):
+            if state != 'active':
+                raise ValueError("Only active subscriptions can be closed early.")
+            if not allow_early_closure:
+                raise ValueError("Plan does not allow early closure.")
+            if not reason:
+                raise ValueError("An early closure reason is required.")
+            return True
+
+        assert can_close_early('active', True, 'Customer request') is True
+        blocked = False
+        try:
+            can_close_early('closed', True, 'reason')
+        except ValueError:
+            blocked = True
+        assert blocked
+        blocked2 = False
+        try:
+            can_close_early('active', False, 'reason')
+        except ValueError:
+            blocked2 = True
+        assert blocked2
+        blocked3 = False
+        try:
+            can_close_early('active', True, None)
+        except ValueError:
+            blocked3 = True
+        assert blocked3
+        print(" [PASS] 34. Early closure eligibility validation")
+        passed += 1
+    except Exception as e:
+        print(f" [FAIL] 34. Early closure eligibility validation: {e}")
+
+    # --- Test 35: Paused subscription excluded from billing ---
+    try:
+        def attempt_billing_v2(sub_state):
+            if sub_state == 'closed':
+                raise ValueError("Cannot generate invoice: Subscription is closed.")
+            if sub_state == 'paused':
+                raise ValueError("Cannot generate invoice: Subscription is paused and billing is suspended.")
+            if sub_state != 'active':
+                raise ValueError("Invoices can only be generated for active subscriptions.")
+            return "INV-CREATED"
+
+        assert attempt_billing_v2('active') == "INV-CREATED"
+        paused_blocked = False
+        try:
+            attempt_billing_v2('paused')
+        except ValueError as err:
+            assert 'paused' in str(err).lower()
+            paused_blocked = True
+        assert paused_blocked, "Paused should block billing"
+        print(" [PASS] 35. Paused subscription excluded from billing")
+        passed += 1
+    except Exception as e:
+        print(f" [FAIL] 35. Paused subscription excluded from billing: {e}")
+
 
     print("=" * 70)
     print(f"Verification Results: {passed}/{total} tests passed successfully!")

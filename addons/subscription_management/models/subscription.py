@@ -728,7 +728,7 @@ class SubscriptionSubscription(models.Model):
             sub.message_post(body=_("Subscription closed early on %s. Reason: %s") % (today, reason))
         return True
 
-        def action_cancel(self):
+    def action_cancel(self):
         """Disallowed under strict lifecycle."""
         raise ValidationError(_("Cancellation is not allowed under the strict lifecycle (Draft -> Quotation -> Confirmed -> Active -> Closed)."))
 
