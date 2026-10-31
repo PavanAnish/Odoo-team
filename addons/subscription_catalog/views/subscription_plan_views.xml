@@ -51,10 +51,13 @@
                             <field name="company_id" groups="base.group_multi_company"/>
                         </group>
                     </group>
-                    <group string="Renewal Settings" name="renewal_settings">
+                    <group string="Renewal &amp; Expiration Settings" name="renewal_settings">
                         <group>
                             <field name="allow_renewal"/>
                             <field name="auto_renewal" invisible="not allow_renewal"/>
+                        </group>
+                        <group>
+                            <field name="auto_closure"/>
                         </group>
                     </group>
                     <group string="Pause &amp; Closure Settings" name="pause_settings">
