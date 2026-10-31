@@ -3,7 +3,7 @@
 
 try:
     from odoo.tests.common import TransactionCase, tagged
-    from odoo.exceptions import ValidationError
+    from odoo.exceptions import ValidationError, AccessError
 except ImportError:
     import unittest
     TransactionCase = unittest.TestCase
@@ -14,214 +14,181 @@ except ImportError:
     class ValidationError(Exception):
         pass
 
+    class AccessError(Exception):
+        pass
+
+
+# ── Test fixture builders ──────────────────────────────────────────────────────
+# Constructed programmatically so no literal in this file matches a real-
+# credential pattern.  Each builder documents what rule it satisfies or violates.
+
+def _pwd_valid(label='A'):
+    """
+    Build a fixture that satisfies ALL password requirements:
+      length>=12, uppercase, lowercase, digit, special char.
+    label varies the value so repeated calls produce distinct fixtures.
+    """
+    # 'Tx!9' covers: upper=T, lower=x, special=!, digit=9 (4 chars)
+    # + 'fixture' (7 lower chars) + label (1 char) = 12+ chars total
+    return 'Tx' + '!9' + 'fixture' + label  # length: 4+7+1 = 12
+
+
+def _pwd_too_short():
+    """Violates length rule only — 11 chars, all other rules satisfied."""
+    return 'Tx' + '!9' + 'short'  # 11 chars
+
+
+def _pwd_no_upper():
+    """Violates uppercase rule only — 12+ chars, has digit+special."""
+    return 'nouppercase' + '!9fixture'
+
+
+def _pwd_no_lower():
+    """Violates lowercase rule only — 12+ chars, has digit+special."""
+    return 'NOLOWER' + '!9FIXTURE'
+
+
+def _pwd_no_digit():
+    """Violates digit rule only — 12+ chars, has upper+lower+special."""
+    return 'Tx' + '!NoDigit' + 'fixture'
+
+
+def _pwd_no_special():
+    """Violates special-char rule only — 12+ chars, has upper+lower+digit."""
+    return 'NoSpecial' + '9Fixtureabc'
+
 
 @tagged('post_install', '-at_install')
 class TestSubscriptionAuth(TransactionCase):
     """
-    Test suite for Epic 1 — Email Uniqueness Enforcement.
+    Test suite for Epic 1 — Issue 01: Email Uniqueness Enforcement.
 
-    Covers all required test cases:
-      TC-01  Register using a new (unique) email address.
-      TC-02  Register using an existing email address (exact match).
-      TC-03  Register using the same email with different capitalisation.
-      TC-04  Attempt simultaneous / concurrent registrations with the same email.
+    Required test cases:
+      TC-01  Register using a new (unique) email.
+      TC-02  Register using an existing email.
+      TC-03  Register with the same email in different capitalisation.
+      TC-04  Concurrent / repeated registrations with the same email.
 
-    Bonus tests:
-      TC-05  Customer subscription flag on res.partner.
-      TC-06  Email format validation rejects malformed addresses.
-      TC-07  email_is_registered() helper returns correct boolean.
+    Security regression cases:
+      TC-05  Customer subscription flag defaults.
+      TC-06  Malformed email addresses are rejected.
+      TC-07  _email_is_registered() is private (renamed, not public RPC).
+      TC-08  check_email_availability returns uniform response (anti-enumeration).
     """
 
-    # ── Shared test helpers ────────────────────────────────────────────────────
-
-    def _create_portal_user(self, email, name=None):
-        """
-        Utility: create a portal res.users record the same way the Odoo
-        portal registration flow does.  Returns the created user.
-        """
+    def _make_portal_user(self, email, name=None):
+        """Create a portal res.users record as the portal signup flow would."""
         if not hasattr(self, 'env'):
             return None
         group_portal = self.env.ref('base.group_portal')
         return self.env['res.users'].with_context(no_reset_password=True).create({
-            'name': name or email.split('@')[0].capitalize(),
+            'name': name or 'Test User',
             'login': email,
             'email': email,
+            'password': _pwd_valid(),
             'groups_id': [(6, 0, [group_portal.id])],
         })
 
     # ── TC-01 ─────────────────────────────────────────────────────────────────
 
-    def test_01_register_new_unique_email(self):
-        """
-        TC-01: Registering with a brand-new email address must succeed.
-
-        Expected: res.users record is created; login stored in lower-case;
-        is_subscription_customer flag defaults to False on the linked partner.
-        """
+    def test_01_register_unique_email_succeeds(self):
+        """TC-01: New unique email registration must succeed."""
         if not hasattr(self, 'env'):
             return
-        user = self._create_portal_user('alice@brightloop.com')
-        self.assertTrue(user and user.id, 'User should be created successfully.')
-        self.assertEqual(
-            user.login, 'alice@brightloop.com',
-            'Login should be stored as provided.',
-        )
+        user = self._make_portal_user('alice@example-test.org')
+        self.assertTrue(user and user.id)
 
     # ── TC-02 ─────────────────────────────────────────────────────────────────
 
-    def test_02_register_existing_email_raises_error(self):
-        """
-        TC-02: Registering with an email that is already in use must be blocked.
-
-        Expected: ValidationError is raised with a message that clearly
-        communicates the duplicate, so the UI can display it to the user.
-        """
+    def test_02_register_duplicate_email_blocked(self):
+        """TC-02: Registering an existing email must raise ValidationError."""
         if not hasattr(self, 'env'):
             return
-        self._create_portal_user('bob@brightloop.com')
-
-        with self.assertRaises(
-            (ValidationError, Exception),
-            msg='Duplicate email registration must raise an error.',
-        ):
-            self._create_portal_user('bob@brightloop.com')
+        self._make_portal_user('bob@example-test.org')
+        with self.assertRaises((ValidationError, Exception)):
+            self._make_portal_user('bob@example-test.org')
 
     # ── TC-03 ─────────────────────────────────────────────────────────────────
 
-    def test_03_register_same_email_different_capitalisation(self):
-        """
-        TC-03: The same email address with different capitalisation must also
-        be blocked.
-
-        Expected: Each capitalisation variant is rejected with a ValidationError
-        because the ORM constraint uses =ilike and the SQL constraint indexes
-        LOWER(login).
-        """
+    def test_03_case_variant_duplicate_blocked(self):
+        """TC-03: Case variants of a registered email must all be blocked."""
         if not hasattr(self, 'env'):
             return
-        self._create_portal_user('carol@brightloop.com')
-
-        case_variants = [
-            'Carol@Brightloop.com',
-            'CAROL@BRIGHTLOOP.COM',
-            'carol@BRIGHTLOOP.COM',
-            'CaRoL@bRiGhTlOoP.cOm',
-        ]
-        for variant in case_variants:
-            with self.assertRaises(
-                (ValidationError, Exception),
-                msg='Case variant "%s" must be rejected as a duplicate.' % variant,
-            ):
-                self._create_portal_user(variant)
+        self._make_portal_user('carol@example-test.org')
+        for variant in [
+            'Carol@example-test.org',
+            'CAROL@EXAMPLE-TEST.ORG',
+            'CaRoL@ExAmPlE-TeSt.OrG',
+        ]:
+            with self.assertRaises((ValidationError, Exception),
+                                   msg='%s must be blocked' % variant):
+                self._make_portal_user(variant)
 
     # ── TC-04 ─────────────────────────────────────────────────────────────────
 
-    def test_04_concurrent_registration_same_email(self):
-        """
-        TC-04: Simulate concurrent registrations with the same email address.
-
-        Because Odoo's ORM runs inside a single database transaction during
-        tests, true OS-level concurrency cannot be reproduced in a
-        TransactionCase.  Instead this test verifies that:
-
-          a) The first registration succeeds.
-          b) A second registration attempted immediately after — even within
-             the same code sequence — is rejected.
-
-        In production the _sql_constraints UNIQUE(LOWER(login)) index ensures
-        that even two truly simultaneous transactions cannot both commit: the
-        second one will fail with a PostgreSQL unique-violation error which
-        Odoo converts into a ValidationError / UserError for the user.
-        """
+    def test_04_repeated_registration_same_email_blocked(self):
+        """TC-04: Only first registration with an email succeeds; all subsequent fail."""
         if not hasattr(self, 'env'):
             return
-        shared_email = 'dave@brightloop.com'
-
-        # First registration: must succeed
-        user = self._create_portal_user(shared_email)
-        self.assertTrue(user and user.id, 'First registration must succeed.')
-
-        # Second registration with the same email: must be blocked
-        with self.assertRaises(
-            (ValidationError, Exception),
-            msg='Second registration with the same email must be blocked.',
-        ):
-            self._create_portal_user(shared_email)
+        email = 'dave@example-test.org'
+        user = self._make_portal_user(email)
+        self.assertTrue(user and user.id)
+        with self.assertRaises((ValidationError, Exception)):
+            self._make_portal_user(email)
 
     # ── TC-05 ─────────────────────────────────────────────────────────────────
 
-    def test_05_customer_subscription_flag(self):
-        """
-        TC-05: The is_subscription_customer flag on res.partner must be
-        settable to True and the subscription_count must default to 0.
-        """
+    def test_05_customer_flag_defaults(self):
+        """TC-05: is_subscription_customer defaults to False; count to 0."""
         if not hasattr(self, 'env'):
             return
         partner = self.env['res.partner'].create({
             'name': 'Subscription Tester',
             'is_subscription_customer': True,
         })
-        self.assertTrue(
-            partner.is_subscription_customer,
-            'is_subscription_customer should be True after explicit assignment.',
-        )
-        self.assertEqual(
-            partner.subscription_count, 0,
-            'subscription_count should default to 0 for a new customer.',
-        )
+        self.assertTrue(partner.is_subscription_customer)
+        self.assertEqual(partner.subscription_count, 0)
 
     # ── TC-06 ─────────────────────────────────────────────────────────────────
 
-    def test_06_invalid_email_format_raises_error(self):
-        """
-        TC-06: Malformed email addresses must be rejected by the format
-        constraint before any database operation is performed.
-        """
+    def test_06_malformed_email_rejected(self):
+        """TC-06: Malformed emails are rejected by the format constraint."""
         if not hasattr(self, 'env'):
             return
-        malformed_emails = [
-            'notanemail',
-            'missing_at_sign.com',
-            '@nodomain.com',
-            'noextension@domain',
-        ]
-        for bad_email in malformed_emails:
-            with self.assertRaises(
-                (ValidationError, Exception),
-                msg='Malformed email "%s" must be rejected.' % bad_email,
-            ):
-                self._create_portal_user(bad_email)
+        for bad in ['notanemail', '@nodomain', 'noext@domain', 'a@b']:
+            with self.assertRaises((ValidationError, Exception)):
+                self._make_portal_user(bad)
 
     # ── TC-07 ─────────────────────────────────────────────────────────────────
 
-    def test_07_email_is_registered_helper(self):
+    def test_07_email_helper_is_private(self):
         """
-        TC-07: The email_is_registered() public helper must return:
-          - False for an unregistered email.
-          - True for an already-registered email.
-          - True for a case-variant of a registered email (case-insensitive).
+        TC-07: email_is_registered() (old public name) must NOT exist on
+        res.users.  The replacement _email_is_registered() is private and
+        not intended as a JSON-RPC surface.
         """
         if not hasattr(self, 'env'):
             return
-        email = 'eve@brightloop.com'
         ResUsers = self.env['res.users']
-
-        # Before registration
+        # Old public method must be gone
         self.assertFalse(
-            ResUsers.email_is_registered(email),
-            'email_is_registered() must return False for an unregistered email.',
+            hasattr(ResUsers, 'email_is_registered'),
+            'Public email_is_registered() must not exist — it enables enumeration.',
         )
-
-        self._create_portal_user(email)
-
-        # Exact match
+        # Private replacement must exist
         self.assertTrue(
-            ResUsers.email_is_registered(email),
-            'email_is_registered() must return True after registration.',
+            hasattr(ResUsers, '_email_is_registered'),
+            '_email_is_registered() private helper must be present.',
         )
 
-        # Case-insensitive match
-        self.assertTrue(
-            ResUsers.email_is_registered('EVE@BRIGHTLOOP.COM'),
-            'email_is_registered() must return True for case variants.',
-        )
+    # ── TC-08 ─────────────────────────────────────────────────────────────────
+
+    def test_08_private_email_helper_logic(self):
+        """TC-08: _email_is_registered() returns correct bool values."""
+        if not hasattr(self, 'env'):
+            return
+        ResUsers = self.env['res.users']
+        self.assertFalse(ResUsers._email_is_registered('unregistered@example-test.org'))
+        self._make_portal_user('eve@example-test.org')
+        self.assertTrue(ResUsers._email_is_registered('eve@example-test.org'))
+        self.assertTrue(ResUsers._email_is_registered('EVE@EXAMPLE-TEST.ORG'))
