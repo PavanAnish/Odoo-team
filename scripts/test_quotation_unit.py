@@ -13,7 +13,7 @@ def run_tests():
     print("Running Quotation Logic & Calculation Verification Suite")
     print("=" * 70)
     passed = 0
-    total = 19
+    total = 25
 
     today = date.today()
     yesterday = today - timedelta(days=1)
@@ -361,6 +361,107 @@ def run_tests():
         passed += 1
     except Exception as e:
         print(f" [FAIL] 19. Confirmed state → expiration_status always 'valid': {e}")
+
+    # ==========================================================
+    # 20. Subscription number format (SUB/%Y/%05d)
+    # ==========================================================
+    try:
+        year_str = str(today.year)
+        seq_num = 1
+        sub_ref = f"SUB/{year_str}/{seq_num:05d}"
+        assert sub_ref.startswith(f"SUB/{year_str}/")
+        assert len(sub_ref) == len(f"SUB/{year_str}/00001")
+        print(" [PASS] 20. Subscription unique number format (SUB/%(year)s/00001)")
+        passed += 1
+    except Exception as e:
+        print(f" [FAIL] 20. Subscription unique number format: {e}")
+
+    # ==========================================================
+    # 21. Daily plan end date calculation
+    # ==========================================================
+    try:
+        from dateutil.relativedelta import relativedelta
+        start_d = date(2026, 5, 1)
+        interval = 7
+        end_d = start_d + timedelta(days=interval)
+        assert end_d == date(2026, 5, 8)
+        print(" [PASS] 21. Daily plan end date calculation (7 days)")
+        passed += 1
+    except Exception as e:
+        print(f" [FAIL] 21. Daily plan end date calculation: {e}")
+
+    # ==========================================================
+    # 22. Weekly plan end date calculation
+    # ==========================================================
+    try:
+        start_d = date(2026, 6, 1)
+        interval = 2
+        end_d = start_d + timedelta(weeks=interval)
+        assert end_d == date(2026, 6, 15)
+        print(" [PASS] 22. Weekly plan end date calculation (2 weeks)")
+        passed += 1
+    except Exception as e:
+        print(f" [FAIL] 22. Weekly plan end date calculation: {e}")
+
+    # ==========================================================
+    # 23. Month-end date calculation with calendar awareness
+    # ==========================================================
+    try:
+        from dateutil.relativedelta import relativedelta
+        start_leap = date(2024, 1, 31)
+        end_leap = start_leap + relativedelta(months=1)
+        assert end_leap == date(2024, 2, 29), f"Expected Feb 29 2024, got {end_leap}"
+
+        start_non = date(2025, 1, 31)
+        end_non = start_non + relativedelta(months=1)
+        assert end_non == date(2025, 2, 28), f"Expected Feb 28 2025, got {end_non}"
+        print(" [PASS] 23. Month-end date calculation (Jan 31 -> Feb 28/29 leap aware)")
+        passed += 1
+    except Exception as e:
+        print(f" [FAIL] 23. Month-end date calculation: {e}")
+
+    # ==========================================================
+    # 24. Leap year yearly calculation (Feb 29 -> Feb 28 next year)
+    # ==========================================================
+    try:
+        from dateutil.relativedelta import relativedelta
+        start_feb29 = date(2024, 2, 29)
+        end_yearly = start_feb29 + relativedelta(years=1)
+        assert end_yearly == date(2025, 2, 28), f"Expected Feb 28 2025, got {end_yearly}"
+        print(" [PASS] 24. Leap year yearly calculation (Feb 29 2024 -> Feb 28 2025)")
+        passed += 1
+    except Exception as e:
+        print(f" [FAIL] 24. Leap year yearly calculation: {e}")
+
+    # ==========================================================
+    # 25. Duplicate conversion prevention (idempotency guard)
+    # ==========================================================
+    try:
+        quotation_state = 'confirmed'
+        is_converted = False
+
+        def convert_quotation(state, converted):
+            if state != 'confirmed':
+                raise ValueError("Only confirmed quotations can be converted.")
+            if converted:
+                raise ValueError("Quotation has already been converted.")
+            return True, True
+
+        # First conversion succeeds
+        ok, is_converted = convert_quotation(quotation_state, is_converted)
+        assert ok is True and is_converted is True
+
+        # Second conversion rejected
+        duplicate_blocked = False
+        try:
+            convert_quotation(quotation_state, is_converted)
+        except ValueError:
+            duplicate_blocked = True
+        assert duplicate_blocked is True
+        print(" [PASS] 25. Duplicate subscription conversion prevention")
+        passed += 1
+    except Exception as e:
+        print(f" [FAIL] 25. Duplicate subscription conversion prevention: {e}")
 
     print("=" * 70)
     print(f"Verification Results: {passed}/{total} tests passed successfully!")

@@ -3,6 +3,7 @@
 
 import logging
 from datetime import timedelta
+from dateutil.relativedelta import relativedelta
 from odoo import api, fields, models, _
 from odoo.exceptions import ValidationError, UserError, AccessError
 
@@ -134,6 +135,53 @@ class SubscriptionSubscription(models.Model):
         tracking=True,
         help='Scheduled date for the next recurring invoice generation.'
     )
+    date_subscription_end = fields.Date(
+        string='Subscription Expiry Date',
+        tracking=True,
+        help='Calculated expiry date of the subscription, computed based on subscription start date and plan billing duration.'
+    )
+
+    # --- Subscription & Quotation Identification ---
+    subscription_ref = fields.Char(
+        string='Subscription Number',
+        copy=False,
+        readonly=True,
+        index=True,
+        tracking=True,
+        help='Unique subscription reference generated when quotation is converted to active subscription (e.g. SUB/2026/00001).'
+    )
+    quotation_id = fields.Many2one(
+        'subscription.subscription',
+        string='Original Quotation',
+        readonly=True,
+        copy=False,
+        index=True,
+        help='Reference to the original quotation that generated this subscription.'
+    )
+    subscription_id = fields.Many2one(
+        'subscription.subscription',
+        string='Generated Subscription',
+        readonly=True,
+        copy=False,
+        index=True,
+        help='Reference to the active subscription generated from this quotation.'
+    )
+    is_converted = fields.Boolean(
+        string='Converted to Subscription',
+        default=False,
+        copy=False,
+        readonly=True,
+        tracking=True,
+        help='True once this confirmed quotation has been converted to a subscription. Prevents duplicate conversions.'
+    )
+
+    # --- Payment Terms ---
+    payment_term_id = fields.Many2one(
+        'account.payment.term',
+        string='Payment Terms',
+        tracking=True,
+        help='Payment terms associated with this quotation and subscription for billing and invoice due date calculation.'
+    )
 
     # --- Discount Rules ---
     discount_id = fields.Many2one(
@@ -202,7 +250,14 @@ class SubscriptionSubscription(models.Model):
             raise AccessError(_("Access Denied: Only authorized internal staff can create subscription quotations."))
         for vals in vals_list:
             if vals.get('name', _('New')) == _('New'):
-                vals['name'] = self.env['ir.sequence'].next_by_code('subscription.subscription') or _('QT/%s/00001') % fields.Date.context_today(self).year
+                if vals.get('subscription_ref'):
+                    vals['name'] = vals['subscription_ref']
+                elif vals.get('quotation_id') or vals.get('state') == 'active':
+                    vals['name'] = self.env['ir.sequence'].next_by_code('subscription.subscription.active') or _('SUB/%s/00001') % fields.Date.context_today(self).year
+                else:
+                    vals['name'] = self.env['ir.sequence'].next_by_code('subscription.subscription') or _('QT/%s/00001') % fields.Date.context_today(self).year
+            if vals.get('name') and str(vals['name']).startswith('SUB/') and not vals.get('subscription_ref'):
+                vals['subscription_ref'] = vals['name']
         records = super().create(vals_list)
         for rec in records:
             rec._check_duplicate_reference()
@@ -267,6 +322,36 @@ class SubscriptionSubscription(models.Model):
             ]
             if self.search_count(domain) > 0:
                 raise ValidationError(_("A quotation with reference '%s' already exists.") % self.name)
+
+    @api.constrains('subscription_ref')
+    def _check_subscription_ref_unique(self):
+        """Enforce uniqueness of subscription_ref per company at the ORM level."""
+        for sub in self:
+            if sub.subscription_ref:
+                domain = [
+                    ('subscription_ref', '=', sub.subscription_ref),
+                    ('id', '!=', sub.id),
+                    ('company_id', '=', sub.company_id.id),
+                ]
+                if self.search_count(domain) > 0:
+                    raise ValidationError(_(
+                        "Subscription number '%s' already exists for this company."
+                    ) % sub.subscription_ref)
+
+    @api.constrains('quotation_id')
+    def _check_unique_quotation_conversion(self):
+        """Ensure a single quotation cannot be linked to multiple subscriptions."""
+        for sub in self:
+            if sub.quotation_id:
+                domain = [
+                    ('quotation_id', '=', sub.quotation_id.id),
+                    ('id', '!=', sub.id),
+                    ('company_id', '=', sub.company_id.id),
+                ]
+                if self.search_count(domain) > 0:
+                    raise ValidationError(_(
+                        "Quotation '%s' has already been converted to another subscription."
+                    ) % sub.quotation_id.name)
 
     def _validate_quotation_integrity(self):
         """Comprehensive quotation validation covering customer, plan, dates, and quantities."""
@@ -447,13 +532,187 @@ class SubscriptionSubscription(models.Model):
         return True
 
     def action_activate(self):
-        """Activate a confirmed quotation into an active subscription."""
+        """Activate a confirmed quotation or subscription into active status.
+        Kept for backward compatibility with existing tests and workflows."""
         for sub in self:
             if sub.state != 'confirmed':
                 raise ValidationError(_("Only confirmed quotations can be activated into active subscriptions."))
+            if not sub.subscription_ref:
+                sub_number = self.env['ir.sequence'].next_by_code('subscription.subscription.active')
+                if not sub_number or sub_number in ('/', _('New'), 'False'):
+                    year_str = str(fields.Date.context_today(self).year)
+                    sub_number = f"SUB/{year_str}/{sub.id or 1:05d}"
+                sub.subscription_ref = sub_number
+            if not sub.date_subscription_end:
+                sub.date_subscription_end = sub._compute_subscription_end_date()
             sub.state = 'active'
-            sub.message_post(body=_("Subscription activated."))
+            sub.message_post(body=_("Subscription activated with reference %s.") % sub.subscription_ref)
         return True
+
+    def action_create_subscription(self):
+        """Convert confirmed quotation(s) into active subscription record(s).
+
+        Business Rules:
+        - Must be in 'confirmed' state.
+        - Must not be expired (validated via _validate_expiration_date()).
+        - Must not already be converted (idempotency / duplicate prevention).
+        - Must contain at least one product line.
+        - Generates unique subscription number via ir.sequence (SUB/%(year)s/NNNNN).
+        - Atomically creates subscription record and copies product lines, pricing, discounts, taxes.
+        - Computes subscription expiry date based on plan interval and calendar-aware relativedelta.
+        - Marks original quotation as converted and links both records bidirectionally.
+        """
+        if not self.env.user.has_group('subscription_base.group_subscription_user'):
+            raise AccessError(_("Access Denied: Only authorized internal staff can create subscriptions."))
+
+        created_subs = self.env['subscription.subscription']
+        for quotation in self:
+            created_sub = quotation._action_create_subscription_single()
+            created_subs |= created_sub
+
+        if len(self) == 1 and self.env.context.get('open_subscription_form'):
+            return {
+                'type': 'ir.actions.act_window',
+                'name': _('Subscription'),
+                'res_model': 'subscription.subscription',
+                'res_id': created_subs.id,
+                'view_mode': 'form',
+                'target': 'current',
+            }
+        return created_subs if len(self) == 1 else True
+
+    def _action_create_subscription_single(self):
+        """Internal worker converting a single confirmed quotation into an active subscription."""
+        self.ensure_one()
+
+        # 1. State validation: only confirmed quotations can be converted
+        if self.state != 'confirmed':
+            raise ValidationError(_(
+                "Only confirmed quotations can be converted into subscriptions. "
+                "Current quotation '%s' is in '%s' status."
+            ) % (self.name, self.state))
+
+        # 2. Duplicate conversion validation
+        if self.is_converted or self.subscription_id:
+            sub_ref = self.subscription_id.name or self.subscription_ref or _('N/A')
+            raise UserError(_(
+                "Quotation '%s' has already been converted to subscription '%s'. "
+                "Duplicate subscription creation is not allowed."
+            ) % (self.name, sub_ref))
+
+        # 3. Expiration validation (cannot convert expired quotation)
+        self._validate_expiration_date()
+
+        # 4. Product lines validation
+        if not self.line_ids:
+            raise ValidationError(_(
+                "Cannot create a subscription from quotation '%s' without any product lines."
+            ) % self.name)
+
+        # 5. Customer & Plan availability validation
+        if not self.partner_id or (hasattr(self.partner_id, 'active') and not self.partner_id.active):
+            raise ValidationError(_("Customer is missing or inactive for quotation '%s'.") % self.name)
+
+        if not self.plan_id or (hasattr(self.plan_id, 'active') and not self.plan_id.active):
+            raise ValidationError(_("Subscription plan is missing or inactive for quotation '%s'.") % self.name)
+
+        avail, reason = self.plan_id.is_available(target_date=self.date_start or fields.Date.context_today(self))
+        if not avail:
+            raise ValidationError(_("Subscription plan '%s' is not available: %s") % (self.plan_id.name, reason))
+
+        # 6. Generate unique subscription reference number
+        seq_code = 'subscription.subscription.active'
+        sub_number = self.env['ir.sequence'].next_by_code(seq_code)
+        if not sub_number or sub_number in ('/', _('New'), 'False'):
+            year_str = str(fields.Date.context_today(self).year)
+            sub_count = self.search_count([('name', 'like', 'SUB/%')]) + 1
+            sub_number = f"SUB/{year_str}/{sub_count:05d}"
+
+        # 7. Compute subscription dates
+        sub_start_date = self.date_start or fields.Date.context_today(self)
+        sub_end_date = self._compute_subscription_end_date(start_date=sub_start_date)
+
+        # 8. Payment terms
+        payment_term = self.payment_term_id
+        if not payment_term and hasattr(self.partner_id, 'property_payment_term_id') and self.partner_id.property_payment_term_id:
+            payment_term = self.partner_id.property_payment_term_id
+
+        # 9. Prepare subscription line values
+        sub_line_vals = []
+        for line in self.line_ids:
+            sub_line_vals.append((0, 0, {
+                'product_id': line.product_id.id,
+                'quantity': line.quantity,
+                'price_unit': line.price_unit,
+                'discount': line.discount,
+                'tax_ids': [(6, 0, line.tax_ids.ids)],
+            }))
+
+        sub_vals = {
+            'name': sub_number,
+            'subscription_ref': sub_number,
+            'quotation_id': self.id,
+            'partner_id': self.partner_id.id,
+            'plan_id': self.plan_id.id,
+            'state': 'active',
+            'payment_term_id': payment_term.id if payment_term else False,
+            'date_quotation': self.date_quotation,
+            'date_start': sub_start_date,
+            'date_subscription_end': sub_end_date,
+            'date_end': self.date_end or sub_end_date,
+            'next_billing_date': sub_start_date,
+            'discount_id': self.discount_id.id if self.discount_id else False,
+            'company_id': self.company_id.id,
+            'notes': self.notes,
+            'line_ids': sub_line_vals,
+        }
+
+        # 10. Atomic creation with database savepoint
+        with self.env.cr.savepoint():
+            new_sub = self.env['subscription.subscription'].create(sub_vals)
+            self.write({
+                'is_converted': True,
+                'subscription_id': new_sub.id,
+                'subscription_ref': sub_number,
+            })
+
+            # Chatter audit trail
+            if hasattr(self, 'message_post'):
+                self.message_post(body=_(
+                    "Quotation successfully converted to subscription <b>%s</b>."
+                ) % sub_number)
+            if hasattr(new_sub, 'message_post'):
+                new_sub.message_post(body=_(
+                    "Subscription created from quotation <b>%s</b>. Plan: %s | Start: %s | Expiry: %s."
+                ) % (self.name, self.plan_id.name, sub_start_date, sub_end_date or _('Ongoing')))
+
+        return new_sub
+
+    def _compute_subscription_end_date(self, start_date=None):
+        """Calculate subscription expiry date from start date and plan billing interval/period.
+
+        Uses calendar-aware dateutil.relativedelta for monthly/yearly to accurately
+        handle month-end dates and leap years. Respects date_end if already configured.
+        """
+        self.ensure_one()
+        if self.date_end:
+            return self.date_end
+        if not self.plan_id:
+            return False
+
+        start = start_date or self.date_start or fields.Date.context_today(self)
+        interval = self.plan_id.billing_interval or 1
+        period = self.plan_id.billing_period or 'monthly'
+
+        if period == 'daily':
+            return start + timedelta(days=interval)
+        elif period == 'weekly':
+            return start + timedelta(weeks=interval)
+        elif period == 'monthly':
+            return start + relativedelta(months=interval)
+        elif period == 'yearly':
+            return start + relativedelta(years=interval)
+        return start + relativedelta(months=1)
 
     def action_cancel(self):
         """Cancel an eligible draft or sent quotation."""

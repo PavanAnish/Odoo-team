@@ -62,7 +62,7 @@ def check_csv_access(file_path):
             if clean_headers != expected_headers:
                 return False, f"Invalid headers in {file_path}. Expected {expected_headers}, got {clean_headers}"
             for idx, row in enumerate(reader, start=2):
-                if not row or all(not field.strip() for field in row):
+                if not row or all(not field.strip() for field in row) or (row and row[0].strip().startswith('#')):
                     continue
                 if len(row) != len(expected_headers):
                     return False, f"Row {idx} in {file_path} has {len(row)} columns, expected {len(expected_headers)}"

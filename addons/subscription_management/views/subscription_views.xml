@@ -16,11 +16,16 @@
                   decoration-danger="is_expired == True"
                   sample="1">
                 <field name="name" string="Quotation Reference"/>
+                <field name="subscription_ref" string="Subscription #" optional="show"/>
                 <field name="partner_id" string="Customer Name"/>
                 <field name="plan_id" string="Subscription Plan"/>
                 <field name="date_quotation" string="Quotation Date"/>
                 <field name="validity_days" string="Validity (Days)" optional="show"/>
-                <field name="date_expiration" string="Expiry Date"/>
+                <field name="date_expiration" string="Quotation Expiry Date" optional="show"/>
+                <field name="date_start" string="Start Date" optional="show"/>
+                <field name="date_subscription_end" string="Sub. Expiry Date" optional="show"/>
+                <field name="payment_term_id" string="Payment Terms" optional="hide"/>
+                <field name="quotation_id" string="Original Quotation" optional="hide"/>
                 <field name="expiration_status" widget="badge"
                        decoration-success="expiration_status == 'valid'"
                        decoration-warning="expiration_status == 'expiring_soon'"
@@ -57,11 +62,17 @@
                             type="object"
                             class="oe_highlight"
                             invisible="state not in ('draft', 'quotation')"/>
+                    <button name="action_create_subscription"
+                            string="Create Subscription"
+                            type="object"
+                            class="oe_highlight"
+                            context="{'open_subscription_form': True}"
+                            invisible="state != 'confirmed' or is_converted"/>
                     <button name="action_activate"
                             string="Activate Subscription"
                             type="object"
                             class="btn-success"
-                            invisible="state != 'confirmed'"/>
+                            invisible="state != 'confirmed' or is_converted"/>
                     <button name="action_cancel"
                             string="Cancel"
                             type="object"
@@ -91,6 +102,8 @@
                             invisible="not date_expiration or date_expiration &gt;= current_date or state in ('confirmed', 'active', 'closed')"/>
                     <widget name="web_ribbon" title="Cancelled" bg_color="text-bg-danger"
                             invisible="state != 'cancelled'"/>
+                    <widget name="web_ribbon" title="Converted" bg_color="text-bg-success"
+                            invisible="not is_converted"/>
 
                     <div class="oe_title">
                         <span class="o_form_label" invisible="state not in ('draft', 'quotation')">Quotation</span>
@@ -98,6 +111,10 @@
                         <h1>
                             <field name="name" readonly="1"/>
                         </h1>
+                        <h2 invisible="not subscription_ref or subscription_ref == name">
+                            <span class="text-muted">Subscription Ref: </span>
+                            <field name="subscription_ref" readonly="1" class="oe_inline"/>
+                        </h2>
                     </div>
 
                     <!-- Clear Section 1: Customer Information & Quotation Information -->
@@ -113,8 +130,13 @@
                         </group>
 
                         <!-- Quotation Information -->
-                        <group name="quotation_info" string="Quotation Information">
+                        <group name="quotation_info" string="Quotation &amp; Contract Information">
+                            <field name="subscription_ref" string="Subscription #" invisible="not subscription_ref" readonly="1"/>
+                            <field name="quotation_id" invisible="not quotation_id" readonly="1"/>
+                            <field name="subscription_id" invisible="not subscription_id" readonly="1"/>
+                            <field name="is_converted" invisible="1"/>
                             <field name="plan_id" readonly="state in ('confirmed', 'active', 'closed', 'cancelled')"/>
+                            <field name="payment_term_id" readonly="state in ('closed', 'cancelled')"/>
                             <field name="date_quotation" readonly="state in ('confirmed', 'active', 'closed', 'cancelled')"/>
                             <field name="validity_days" readonly="state in ('confirmed', 'active', 'closed', 'cancelled')"
                                    help="Number of days from quotation date until expiry. Changing this will auto-recalculate the expiry date."/>
@@ -124,8 +146,11 @@
                                    decoration-warning="expiration_status == 'expiring_soon'"
                                    decoration-danger="expiration_status == 'expired'"
                                    invisible="state in ('confirmed', 'active', 'paused', 'closed', 'cancelled')"/>
-                            <field name="date_start" string="Contract Start" readonly="state in ('confirmed', 'active', 'closed', 'cancelled')"/>
+                            <field name="date_start" string="Contract Start" readonly="state in ('closed', 'cancelled')"/>
+                            <field name="date_subscription_end" string="Subscription Expiry" readonly="state in ('closed', 'cancelled')"
+                                   invisible="not date_subscription_end"/>
                             <field name="date_end" string="Contract End" readonly="state in ('closed', 'cancelled')"/>
+                            <field name="next_billing_date" readonly="1" invisible="state in ('draft', 'quotation')"/>
                             <field name="company_id" groups="base.group_multi_company"/>
                             <field name="currency_id" invisible="1"/>
                         </group>
@@ -198,8 +223,11 @@
         <field name="arch" type="xml">
             <search string="Search Quotations &amp; Subscriptions">
                 <field name="name" string="Reference" filter_domain="['|', ('name', 'ilike', self), ('partner_id', 'ilike', self)]"/>
+                <field name="subscription_ref" string="Subscription Number"/>
+                <field name="quotation_id" string="Original Quotation"/>
                 <field name="partner_id" string="Customer"/>
                 <field name="plan_id" string="Subscription Plan"/>
+                <field name="payment_term_id" string="Payment Terms"/>
                 <field name="discount_id" string="Discount Rule"/>
                 <separator/>
                 <filter string="My Quotations" name="filter_my_quotations" domain="[('create_uid', '=', uid)]"/>
@@ -207,6 +235,8 @@
                 <filter string="Draft Quotations" name="filter_draft" domain="[('state', '=', 'draft')]"/>
                 <filter string="Sent Quotations" name="filter_quotation" domain="[('state', '=', 'quotation')]"/>
                 <filter string="Confirmed" name="filter_confirmed" domain="[('state', '=', 'confirmed')]"/>
+                <filter string="Ready for Conversion" name="filter_ready_conversion" domain="[('state', '=', 'confirmed'), ('is_converted', '=', False)]"/>
+                <filter string="Converted to Subscription" name="filter_converted" domain="[('is_converted', '=', True)]"/>
                 <filter string="Active Subscriptions" name="filter_active" domain="[('state', '=', 'active')]"/>
                 <filter string="Cancelled" name="filter_cancelled" domain="[('state', '=', 'cancelled')]"/>
                 <separator/>
@@ -223,6 +253,7 @@
                     <filter string="Customer" name="group_by_partner" context="{'group_by': 'partner_id'}"/>
                     <filter string="Plan" name="group_by_plan" context="{'group_by': 'plan_id'}"/>
                     <filter string="Status" name="group_by_state" context="{'group_by': 'state'}"/>
+                    <filter string="Payment Terms" name="group_by_payment_term" context="{'group_by': 'payment_term_id'}"/>
                     <filter string="Expiration Status" name="group_by_exp_status" context="{'group_by': 'expiration_status'}"/>
                     <filter string="Quotation Month" name="group_by_quotation_date" context="{'group_by': 'date_quotation:month'}"/>
                 </group>
