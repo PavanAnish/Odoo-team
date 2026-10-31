@@ -15,6 +15,10 @@
                         <setting id="subscription_grace_period_setting" help="Overdue tolerance window before subscription state transition.">
                             <field name="subscription_grace_period_days"/>
                         </setting>
+                        <setting id="subscription_default_validity_setting"
+                                  help="System-wide default quotation validity duration. Individual quotations may override this per-record.">
+                            <field name="subscription_default_validity_days"/>
+                        </setting>
                     </block>
                 </app>
             </xpath>

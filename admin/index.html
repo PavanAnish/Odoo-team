@@ -1,189 +1,44 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Admin Panel</title>
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<style>
-:root{color-scheme:light;--bg:#FBF9F6;--c:#A47551;--ch:#8E6343;--sg:#7E9C88;--am:#D9A441;--te:#C4674A;--t:#2A2320;--t2:#6F645B;--t3:#756a5f;--bd:#EDE6DD;--s1:#F5EFE8;--s2:#EDE3D8;--ai:linear-gradient(135deg,#E9D3BC,#F6E7D6 55%,#fff);box-sizing:border-box}
-*{box-sizing:border-box;margin:0}body{font:14px Inter,system-ui,sans-serif;background:var(--bg);color:var(--t);padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-h1,h2,h3{letter-spacing:-.02em}button,input,select,textarea{font:inherit;color:inherit}
-:focus-visible{outline:2px solid var(--c);outline-offset:2px}
-#app{display:flex;min-height:100vh}
-aside{width:260px;background:#fff;border-right:1px solid var(--bd);padding:16px 12px;display:flex;flex-direction:column;gap:4px;position:sticky;top:0;height:100vh;transition:width .2s;z-index:30}
-.col aside{width:68px}.col .lb,.col .promo,.col .usr span{display:none}
-.logo{font-weight:600;font-size:18px;padding:8px 10px 16px;display:flex;gap:8px;align-items:center;letter-spacing:-.03em}
-.logo i{width:32px;height:32px;border-radius:10px;background:var(--c);color:#fff;font-style:normal;display:grid;place-items:center;font-size:15px;font-weight:600}
-aside a{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:12px;color:var(--t2);text-decoration:none;position:relative;font-weight:500}
-aside a:hover{background:var(--s1)}aside a.on{background:var(--s1);color:var(--c)}aside a.on:before{content:"";position:absolute;left:-12px;top:8px;bottom:8px;width:3px;border-radius:2px;background:var(--c)}
-svg.i{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
-.promo{margin-top:auto;background:var(--ai);border:1px solid var(--s2);border-radius:16px;padding:14px;font-size:13px}
-.usr{display:flex;gap:10px;align-items:center;padding:10px;border-top:1px solid var(--bd);margin-top:8px}
-.av{width:32px;height:32px;border-radius:50%;background:var(--s2);color:var(--c);display:grid;place-items:center;font-weight:600;flex:none}
-main{flex:1;min-width:0}
-header{display:flex;gap:12px;align-items:center;padding:12px 24px;background:#fff;border-bottom:1px solid var(--bd);position:sticky;top:0;z-index:20}
-.ask{flex:1;max-width:480px;text-align:left;background:var(--bg);border:1px solid var(--bd);border-radius:12px;padding:9px 14px;color:var(--t2);cursor:pointer}
-.ask b{float:right;font-weight:500;color:var(--t3)}
-.ib{background:#fff;border:1px solid var(--bd);border-radius:10px;padding:8px;cursor:pointer;display:grid;place-items:center}
-.ib:hover{background:var(--s1)}
-#mn{padding:24px;max-width:1280px;margin:auto}
-.ph{display:flex;justify-content:space-between;align-items:end;gap:12px;margin-bottom:20px;flex-wrap:wrap}
-.ph small{color:var(--t2)}.ph h1{font-size:26px;margin-top:4px}
-.btn{background:var(--c);color:#fff;border:0;border-radius:10px;padding:9px 16px;font-weight:500;cursor:pointer}
-.btn:hover{background:var(--ch)}.btn.o{background:#fff;color:var(--t);border:1px solid var(--bd)}.btn.o:hover{background:var(--s1)}
-.btn.ai{box-shadow:0 0 0 3px #E9D3BC88}.btn.d{background:var(--te)}
-.card{background:#fff;border:1px solid var(--bd);border-radius:16px;padding:20px;box-shadow:0 1px 3px #2a232010}
-.aic{background:var(--ai);border-color:var(--s2)}.card{transition:box-shadow .2s}.card:hover{box-shadow:0 6px 20px #2a232014}
-.g{display:grid;gap:16px;margin-bottom:16px}.g4{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}.g2{grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
-.kv{font-size:28px;font-weight:600;letter-spacing:-.03em;margin:6px 0}.mut{color:var(--t2)}.up{color:#4f7360}.dn{color:var(--te)}
-.bd{display:inline-block;padding:3px 10px;border-radius:99px;font-size:12px;font-weight:500}
-.bd.g{background:#7E9C8826;color:#4a6b57}.bd.a{background:#D9A44128;color:#8a6410}.bd.r{background:#C4674A22;color:#a24a30}.bd.s{background:var(--s1);color:var(--t2)}
-.tb{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center}
-input,select,textarea{border:1px solid var(--bd);border-radius:10px;padding:9px 12px;background:#fff;width:100%}
-.tb input{max-width:280px}.tb select{width:auto}
-table{width:100%;border-collapse:collapse}th{text-align:left;color:var(--t2);font-weight:500;padding:10px 12px;border-bottom:1px solid var(--bd);cursor:pointer;white-space:nowrap}
-td{padding:12px;border-bottom:1px solid var(--bd)}tr.r:hover{background:var(--s1);cursor:pointer}tr.ov{background:#C4674A0d}
-.tw{overflow-x:auto}.card.tp{padding:8px 12px}
-.sw{width:38px;height:22px;border-radius:99px;background:var(--s2);border:0;position:relative;cursor:pointer;flex:none}
-.sw:after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.2s}
-.sw.on{background:var(--sg)}.sw.on:after{left:19px}
-.ov0{position:fixed;inset:0;background:#2a232066;z-index:50;display:flex;align-items:center;justify-content:center;padding:16px}
-.ov0.dr{justify-content:flex-end;padding:0}.md{background:#fff;border-radius:20px;width:min(560px,100%);max-height:92vh;overflow:auto;padding:24px}
-.dr .md{height:100%;max-height:100%;border-radius:20px 0 0 20px}
-.md label{display:block;margin:12px 0 4px;color:var(--t2);font-size:13px}.er{color:var(--te);font-size:12px}
-.ft{position:sticky;bottom:-24px;background:#fff;padding:14px 0 0;margin-top:16px;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--bd)}
-.vr{display:flex;gap:8px;margin-bottom:8px}
-#ts{position:fixed;bottom:20px;right:20px;display:grid;gap:8px;z-index:90}
-.t{background:var(--t);color:#fff;padding:12px 16px;border-radius:12px;animation:in .25s}
-@keyframes in{from{opacity:0;transform:translateY(8px)}}
-.sk{height:110px;border-radius:16px;background:linear-gradient(90deg,var(--s1),#fff,var(--s1));background-size:200%;animation:sh 1.2s infinite}
-@keyframes sh{to{background-position:-200%}}
-.tabs{display:flex;gap:4px;margin-bottom:12px;flex-wrap:wrap}.tabs button{border:0;background:0;padding:8px 14px;border-radius:99px;cursor:pointer;color:var(--t2)}.tabs .on{background:var(--s1);color:var(--c);font-weight:600}
-.kb{display:grid;grid-template-columns:repeat(5,minmax(200px,1fr));gap:12px;overflow-x:auto}.kb>div{background:var(--s1);border-radius:14px;padding:10px;min-height:200px}
-.kb .card{padding:12px;margin-top:8px;cursor:pointer}
-.stp{display:flex;gap:6px;margin:16px 0;flex-wrap:wrap}.stp div{flex:1;min-width:90px;padding:10px;border-radius:12px;background:var(--s1);text-align:center;color:var(--t2)}.stp .dn2{background:var(--sg);color:#fff}.stp .cur{background:var(--c);color:#fff}
-.pb{height:6px;background:var(--s1);border-radius:9px;overflow:hidden;min-width:70px}.pb i{display:block;height:100%;background:var(--c)}
-.empty{text-align:center;padding:40px;color:var(--t2)}.empty b{display:block;font-size:18px;color:var(--t);margin-bottom:4px}
-.mb{display:none}
-@media(max-width:860px){aside{position:fixed;left:-280px;width:260px}.open aside{left:0;box-shadow:0 0 40px #0004}.mb{display:grid}.col aside{width:260px}.col .lb,.col .promo,.col .usr span{display:revert}.dsk{display:none}header{padding:12px}#mn{padding:16px}}
-@media(max-width:720px){.rt table,.rt thead,.rt tbody,.rt tr,.rt td{display:block}.rt thead{display:none}.rt tr{border:1px solid var(--bd);border-radius:12px;margin-bottom:8px;padding:6px}.rt td{border:0;padding:6px 8px;display:flex;justify-content:space-between;gap:8px}.rt td:before{content:attr(data-l);color:var(--t2)}.g2{grid-template-columns:1fr}}
-@media(print){aside,header,.np{display:none!important}}
-@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
-</style></head><body>
-<div id="app"><aside><div class="logo"><i>A</i><span class="lb">Admin Panel</span></div><nav id="nv"></nav>
-<div class="promo"><b>AI assistant</b><p class="mut" style="margin:6px 0 10px">Spot churn risk and late payers before they hurt revenue.</p><button class="btn ai" onclick="ask()">Ask AI</button></div>
-<div class="usr"><div class="av">MR</div><span><b>Maya Rao</b><br><small class="mut">Finance lead</small></span></div></aside>
-<main><header><button class="ib mb" aria-label="Menu" onclick="app.classList.toggle('open')">☰</button><button class="ib dsk" aria-label="Collapse sidebar" onclick="app.classList.toggle('col')">⇤</button>
-<button class="ask" onclick="ask()">Search or ask AI anything… <b>⌘K</b></button><select class="dsk" style="width:auto" aria-label="Date range"><option>Last 30 days</option><option>This quarter</option><option>This year</option></select>
-<button class="ib" aria-label="Notifications" onclick="toast('You have 3 new alerts')">🔔</button><div class="av">MR</div></header><div id="mn"></div></main></div><div id="ts"></div>
-<script>
-const $=s=>document.querySelector(s),M=n=>'$'+Number(n).toLocaleString(),app=$('#app'),TODAY=new Date('2026-10-31');
-const BC={Active:'g',Paid:'g',Confirmed:'g',Converted:'g',Draft:'s',Quotation:'a',Pending:'a',Paused:'a',Overdue:'r',Closed:'s',Inactive:'s',Sent:'a'};
-const B=s=>`<span class="bd ${BC[s]||'s'}">${s}</span>`;
-const IC={Dashboard:"M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z",Customers:"M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8",Products:"M21 8l-9-5-9 5v8l9 5 9-5zM3 8l9 5 9-5M12 13v8",Plans:"M4 6h16M4 12h16M4 18h10",Taxes:"M19 5L5 19M7 9a2 2 0 1 0 0-.1M17 19a2 2 0 1 0 0-.1",Discounts:"M20 12l-8 8-9-9V3h8zM7.5 7.5h.01",Quotations:"M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9zM14 3v6h6M8 13h8M8 17h5",Subscriptions:"M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5","Invoices & Payments":"M2 6h20v12H2zM2 10h20"};
-const NAV=Object.keys(IC),slug=n=>n.split(' ')[0].toLowerCase();
-const D={
-customers:[['Northwind Co.','ava@northwind.io','Northwind',1,3,48200,'Active'],['Lumen Labs','jo@lumen.dev','Lumen Labs',1,2,31400,'Active'],['Harbor & Pine','tess@harborpine.com','Harbor & Pine',0,1,9800,'Active'],['Kite Studio','sam@kite.studio','Kite Studio',1,0,4200,'Inactive'],['Orbit Foods','li@orbitfoods.co','Orbit Foods',0,2,18700,'Active']].map((r,i)=>({id:i+1,name:r[0],email:r[1],company:r[2],portal:r[3],subs:r[4],ltv:r[5],status:r[6]})),
-products:[['Recurra Pro Seat','Software',29,9,'Per-seat license',[{a:'Brand: Odoo',x:0},{a:'Brand: Zoho',x:4}]],['Onboarding Package','Service',400,150,'One-time setup',[]],['Priority Support','Add-on',99,35,'24h response',[]],['Analytics Add-on','Add-on',49,12,'Dashboards',[]]].map((r,i)=>({id:i+1,name:r[0],type:r[1],price:r[2],cost:r[3],notes:r[4],variants:r[5]})),
-plans:[['Starter Monthly','Monthly',1,'2026-01-01','2027-12-31',1,1,30,'Recurra Pro Seat'],['Pro Yearly','Yearly',5,'2026-01-01','2027-12-31',1,1,45,'Recurra Pro Seat,Priority Support'],['Team Weekly','Weekly',2,'2026-06-01','2026-12-31',0,1,14,'Analytics Add-on']].map((r,i)=>({id:i+1,name:r[0],freq:r[1],minQty:r[2],start:r[3],end:r[4],pause:r[5],renew:r[6],autoClose:r[7],products:r[8]})),
-taxes:[['GST','18',  'all',1],['VAT Reduced','7','products',1],['Service Levy','5','subscriptions',0]].map((r,i)=>({id:i+1,name:r[0],rate:+r[1],scope:r[2],on:r[3]})),
-discounts:[['WELCOME10','percentage',10,50,1,'2026-01-01','2026-12-31',100,64,'all',1],['LOYAL50','fixed',50,300,1,'2026-03-01','2027-03-01',40,38,'Recurra Pro Seat',1],['SPRING20','percentage',20,0,2,'2026-03-01','2026-05-31',60,60,'all',0]].map((r,i)=>({id:i+1,name:r[0],type:r[1],value:r[2],minPurchase:r[3],minQty:r[4],start:r[5],end:r[6],limit:r[7],used:r[8],scope:r[9],on:r[10]})),
-quotes:[['QUO-301','Lumen Labs','Pro Yearly','Recurra Pro Seat',5,10,18,'Sent'],['QUO-302','Kite Studio','Starter Monthly','Onboarding Package',1,0,18,'Draft']].map((r,i)=>({id:i+1,n:r[0],customer:r[1],plan:r[2],product:r[3],qty:r[4],disc:r[5],tax:r[6],st:r[7]})),
-subs:[['SUB-1001','Northwind Co.','Pro Yearly','Active',2400,'2026-11-15'],['SUB-1002','Lumen Labs','Starter Monthly','Active',240,'2026-11-04'],['SUB-1003','Harbor & Pine','Team Weekly','Confirmed',98,'2026-11-07'],['SUB-1004','Orbit Foods','Starter Monthly','Quotation',145,'2026-11-20'],['SUB-1005','Kite Studio','Starter Monthly','Draft',60,'2026-12-01'],['SUB-1006','Orbit Foods','Pro Yearly','Closed',1800,'2026-09-01']].map((r,i)=>({id:i+1,n:r[0],c:r[1],plan:r[2],st:r[3],amt:r[4],next:r[5],paused:0})),
-invoices:[['INV-2041','Northwind Co.',2832,'Paid','2026-10-05'],['INV-2042','Lumen Labs',283,'Confirmed','2026-11-05'],['INV-2043','Harbor & Pine',116,'Confirmed','2026-10-22'],['INV-2044','Orbit Foods',171,'Confirmed','2026-10-12'],['INV-2045','Kite Studio',71,'Draft','2026-11-30'],['INV-2046','Northwind Co.',2832,'Draft','2026-11-15']].map((r,i)=>({id:i+1,n:r[0],c:r[1],amt:r[2],st:r[3],due:r[4]}))};
-const S={q:{},sort:{},tab:'All',view:'table',sel:null,rev:'Month'};
-const ds=i=>i.st!=='Paid'&&i.st!=='Draft'&&new Date(i.due)<TODAY?'Overdue':i.st,dO=i=>Math.floor((TODAY-new Date(i.due))/864e5);
-function toast(m){const e=document.createElement('div');e.className='t';e.textContent=m;$('#ts').append(e);setTimeout(()=>e.remove(),2800)}
-function modal(h,dr){const o=document.createElement('div');o.className='ov0'+(dr?' dr':'');o.innerHTML=`<div class="md" role="dialog" aria-modal="true">${h}</div>`;o.onclick=e=>{if(e.target===o)o.remove()};document.body.append(o);const f=o.querySelector('input,button');f&&f.focus();return o}
-const X=()=>document.querySelectorAll('.ov0').forEach(o=>o.remove());
-function confirmD(m,fn,lbl='Confirm',cls=''){const o=modal(`<h3>${m}</h3><div class="ft"><button class="btn o" onclick="X()">Cancel</button><button class="btn ${cls}" id="cy">${lbl}</button></div>`);o.querySelector('#cy').onclick=()=>{X();fn()}}
-// forms
-const FD={
-customers:[{k:'name',l:'Name',r:1},{k:'email',l:'Email',r:1},{k:'company',l:'Company'},{k:'status',l:'Status',t:'sel',o:['Active','Inactive']},{k:'portal',l:'Portal access',t:'tg'}],
-products:[{k:'name',l:'Name',r:1},{k:'type',l:'Type',t:'sel',o:['Software','Service','Add-on']},{k:'price',l:'Sales price',t:'number',r:1},{k:'cost',l:'Cost price',t:'number'},{k:'notes',l:'Notes'},{t:'mg'},{k:'variants',t:'var'}],
-plans:[{k:'name',l:'Plan name',r:1},{k:'freq',l:'Billing frequency',t:'sel',o:['Daily','Weekly','Monthly','Yearly']},{k:'minQty',l:'Minimum quantity',t:'number'},{k:'start',l:'Available from',t:'date'},{k:'end',l:'Available until',t:'date'},{k:'products',l:'Linked products',t:'ms'},{k:'pause',l:'Allow pause',t:'tg'},{k:'renew',l:'Allow renewal',t:'tg'},{k:'autoClose',l:'Auto-close after (days unpaid)',t:'number'},{t:'life'}],
-taxes:[{k:'name',l:'Tax name',r:1},{k:'rate',l:'Rate (%)',t:'number',r:1},{k:'scope',l:'Applies to',t:'sel',o:['all','products','subscriptions']},{k:'on',l:'Active',t:'tg'}],
-discounts:[{k:'name',l:'Code / name',r:1},{k:'type',l:'Type',t:'sel',o:['percentage','fixed']},{k:'value',l:'Value',t:'number',r:1},{k:'minPurchase',l:'Minimum purchase',t:'number'},{k:'minQty',l:'Minimum quantity',t:'number'},{k:'start',l:'Start date',t:'date'},{k:'end',l:'Expiry date',t:'date'},{k:'limit',l:'Usage limit',t:'number'},{k:'scope',l:'Applies to',t:'sel',o:['all',...[]]},{k:'on',l:'Active',t:'tg'}],
-quotes:[{k:'customer',l:'Customer',t:'sel',o:()=>D.customers.map(c=>c.name)},{k:'plan',l:'Plan',t:'sel',o:()=>D.plans.map(c=>c.name)},{k:'product',l:'Product',t:'sel',o:()=>D.products.map(c=>c.name)},{k:'qty',l:'Quantity',t:'number',r:1},{k:'disc',l:'Discount (%)',t:'number'},{k:'tax',l:'Tax (%)',t:'sel',o:()=>D.taxes.map(c=>String(c.rate))},{t:'tot'}]};
-function opts(f){const o=typeof f.o==='function'?f.o():f.o;return f.k==='scope'?['all',...D.products.map(p=>p.name)]:o}
-function form(k,id){const rec=id?D[k].find(r=>r.id===id):{},F=FD[k];
-const row=(v={a:'',x:0})=>`<div class="vr"><input placeholder="Attribute e.g. Brand: Odoo" value="${v.a}"><input type="number" style="max-width:110px" placeholder="+ price" value="${v.x}"><button type="button" class="btn o" onclick="this.parentNode.remove()" aria-label="Remove">✕</button></div>`;
-const fh=F.map(f=>{const v=rec[f.k]??(f.t==='number'?0:'');if(f.t==='tg')return`<label style="display:flex;justify-content:space-between;align-items:center">${f.l}<button type="button" id="f_${f.k}" class="sw ${v?'on':''}" onclick="this.classList.toggle('on')" aria-label="${f.l}"></button></label>`;
-if(f.t==='sel')return`<label for="f_${f.k}">${f.l}</label><select id="f_${f.k}">${opts(f).map(o=>`<option ${String(o)===String(v)?'selected':''}>${o}</option>`).join('')}</select>`;
-if(f.t==='ms')return`<label for="f_${f.k}">${f.l}</label><select id="f_${f.k}" multiple size="4">${D.products.map(p=>`<option ${String(v).split(',').includes(p.name)?'selected':''}>${p.name}</option>`).join('')}</select>`;
-if(f.t==='var')return`<label>Variants</label><div id="vs">${(v||[]).map(row).join('')}</div><button type="button" class="btn o" onclick="vs.insertAdjacentHTML('beforeend',\`${row().replace(/`/g,'')}\`)">+ Add variant</button>`;
-if(f.t==='mg')return`<div class="card aic" style="margin-top:12px">Margin: <b id="mg"></b></div>`;
-if(f.t==='life')return`<label>Plan lifecycle</label><div class="stp"><div>Draft</div><div>Confirmed</div><div>Active</div><div>Paused</div><div>Auto-close</div></div><small class="mut">Closes automatically after <span id="lc">${rec.autoClose||30}</span> unpaid days.</small>`;
-if(f.t==='tot')return`<div class="card aic" style="margin-top:12px">Total: <b id="tt"></b></div>`;
-return`<label for="f_${f.k}">${f.l}</label><input id="f_${f.k}" type="${f.t||'text'}" value="${String(v).replace(/"/g,'&quot;')}"><span class="er" id="e_${f.k}"></span>`}).join('');
-const o=modal(`<h2>${id?'Edit':'New'} ${k==='quotes'?'quotation':k.slice(0,-1)}</h2>${fh}<div class="ft"><button class="btn o" onclick="X()">Discard</button><button class="btn" id="sv">Save changes</button></div>`,k==='customers');
-const upd=()=>{const g=n=>+(o.querySelector('#f_'+n)||{}).value||0;if($('#mg')){const p=g('price'),c=g('cost');mg.textContent=p?M(p-c)+' ('+Math.round((p-c)/p*100)+'%)':'—'}
-if($('#tt')){const p=(D.products.find(x=>x.name===o.querySelector('#f_product').value)||{price:0}).price;tt.textContent=M((p*g('qty')*(1-g('disc')/100)*(1+g('tax')/100)).toFixed(2))}if($('#lc'))lc.textContent=g('autoClose')};
-o.addEventListener('input',upd);o.addEventListener('change',upd);upd();
-o.querySelector('#sv').onclick=()=>{let ok=1;const out={};F.forEach(f=>{if(!f.k)return;const e=o.querySelector('#f_'+f.k);let v;
-if(f.t==='tg')v=e.classList.contains('on')?1:0;else if(f.t==='ms')v=[...e.selectedOptions].map(x=>x.value).join(',');else if(f.t==='var')v=[...o.querySelectorAll('#vs .vr')].map(r=>({a:r.children[0].value,x:+r.children[1].value||0})).filter(x=>x.a);
-else{v=e.value.trim();if(f.t==='number')v=+v;if(f.r&&(v===''||v!==v)){ok=0;const er=o.querySelector('#e_'+f.k);er&&(er.textContent=f.l+' is required')}}out[f.k]=v});
-if(!ok)return;if(k==='quotes'){out.tax=+out.tax;out.qty=out.qty;}if(id)Object.assign(rec,out);else{const nx=Math.max(0,...D[k].map(r=>r.id))+1;D[k].push({id:nx,...(k==='quotes'?{n:'QUO-'+(300+nx),st:'Draft'}:{}),...(k==='customers'?{subs:0,ltv:0}:{}),...(k==='discounts'?{used:0}:{}),...out})}X();toast('Saved '+(out.name||'quotation'));R()}}
-function del(k,id){confirmD('Delete this record? This cannot be undone.',()=>{D[k]=D[k].filter(r=>r.id!==id);toast('Deleted');R()},'Delete','d')}
-function tog(k,id,key){const r=D[k].find(x=>x.id===id);r[key]=r[key]?0:1;R()}
-// generic list page
-const CR={customers:{t:'Customers',a:'Add customer',c:[['Name','name'],['Email','email'],['Company','company'],['Portal','portal','t'],['Subs','subs'],['Lifetime value','ltv','m'],['Status','status','b']]},
-products:{t:'Products',a:'Add product',c:[['Name','name'],['Type','type','b'],['Sales price','price','m'],['Cost','cost','m'],['Variants','variants','n']]},
-plans:{t:'Plans',a:'Create plan',c:[['Plan','name'],['Billing','freq','b'],['Min qty','minQty'],['Available','start','d'],['Products','products'],['Pause','pause','t']]},
-taxes:{t:'Taxes',a:'Add tax',c:[['Tax','name'],['Rate','rate','%'],['Applies to','scope'],['Status','on','o']]},
-discounts:{t:'Discounts',a:'Create discount',c:[['Code','name'],['Type','type'],['Value','value'],['Min purchase','minPurchase','m'],['Expires','end'],['Usage','used','p'],['Status','on','o']]}};
-function cell(k,r,[l,key,t]){const v=r[key];return t==='m'?M(v):t==='b'?B(v):t==='%'?v+'%':t==='n'?v.length:t==='d'?v+' →':t==='t'?`<button class="sw ${v?'on':''}" aria-label="${l}" onclick="event.stopPropagation();tog('${k}',${r.id},'${key}')"></button>`:t==='o'?`<button class="sw ${v?'on':''}" aria-label="Active" onclick="event.stopPropagation();tog('${k}',${r.id},'${key}')"></button>`:t==='p'?`<div class="pb"><i style="width:${Math.min(100,v/r.limit*100)}%"></i></div><small class="mut">${v}/${r.limit}</small>`:v}
-function crud(k){const o=CR[k],q=(S.q[k]||'').toLowerCase(),s=S.sort[k];let rows=D[k].filter(r=>JSON.stringify(r).toLowerCase().includes(q));
-if(s)rows=[...rows].sort((a,b)=>(a[s.k]>b[s.k]?1:-1)*s.d);
-const tbl=rows.length?`<div class="card tp tw rt"><table><thead><tr>${o.c.map(c=>`<th onclick="S.sort['${k}']={k:'${c[1]}',d:${s&&s.k===c[1]?-s.d:1}};R()">${c[0]}${s&&s.k===c[1]?(s.d>0?' ↑':' ↓'):''}</th>`).join('')}<th></th></tr></thead><tbody>${rows.map(r=>`<tr class="r" onclick="${k==='customers'?`cust(${r.id})`:`form('${k}',${r.id})`}">${o.c.map(c=>`<td data-l="${c[0]}">${cell(k,r,c)}</td>`).join('')}<td><button class="ib" aria-label="Delete" onclick="event.stopPropagation();del('${k}',${r.id})">🗑</button></td></tr>`).join('')}</tbody></table></div>`:`<div class="card empty"><b>Nothing here yet</b>Try a different search or add a new record.</div>`;
-const grid=k==='products'&&S.view==='grid'?`<div class="g g4">${rows.map(r=>`<div class="card" style="cursor:pointer" onclick="form('products',${r.id})"><b>${r.name}</b><p class="mut">${r.notes}</p><div class="kv">${M(r.price)}</div>${B(r.type)} <small class="mut">margin ${Math.round((r.price-r.cost)/r.price*100)}%</small></div>`).join('')}</div>`:tbl;
-return[`<button class="btn" onclick="form('${k}')">+ ${o.a}</button>`,`<div class="tb"><input placeholder="Search ${o.t.toLowerCase()}…" aria-label="Search" value="${S.q[k]||''}" oninput="S.q['${k}']=this.value;R(1)">${k==='products'?`<button class="btn o" onclick="S.view=S.view==='grid'?'table':'grid';R()">${S.view==='grid'?'Table':'Grid'} view</button>`:''}${k==='customers'?`<button class="btn o" onclick="toast('Invites sent to selected customers')">Bulk invite</button>`:''}</div><div id="tbl">${grid}</div>`]}
-function cust(id){const c=D.customers.find(x=>x.id===id);modal(`<h2>${c.name}</h2><p class="mut">${c.email} · ${c.company}</p><p style="margin:12px 0">${B(c.status)} Lifetime value <b>${M(c.ltv)}</b></p><h3>Subscriptions</h3>${D.subs.filter(s=>s.c===c.name).map(s=>`<p>${s.n} ${B(s.st)} ${M(s.amt)}</p>`).join('')||'<p class="mut">None</p>'}<h3 style="margin-top:12px">Invoices</h3>${D.invoices.filter(s=>s.c===c.name).map(s=>`<p>${s.n} ${B(ds(s))} ${M(s.amt)}</p>`).join('')||'<p class="mut">None</p>'}<div class="ft"><button class="btn o" onclick="X();form('customers',${id})">Edit</button><button class="btn" onclick="toast('Portal invite sent to ${c.email}');X()">${c.portal?'Resend':'Send'} portal invite</button></div>`,1)}
-// dashboard
-const spark=(v,c='#A47551')=>{const m=Math.max(...v);return`<svg viewBox="0 0 80 24" width="80" height="24"><polyline fill="none" stroke="${c}" stroke-width="2" points="${v.map((y,i)=>i*80/(v.length-1)+','+(22-y/m*20)).join(' ')}"/></svg>`};
-const kpi=(l,v,pre,t,sp)=>`<div class="card"><span class="mut">${l}</span><div class="kv"><span class="cu" data-v="${v}" data-p="${pre}">0</span></div><div style="display:flex;justify-content:space-between;align-items:center"><small class="${t<0&&l.startsWith('Over')?'dn':'up'}">${t>0?'▲':'▼'} ${Math.abs(t)}%</small>${spark(sp,l.startsWith('Over')?'#C4674A':'#A47551')}</div></div>`;
-const area=(v,c,w=600,h=200)=>{const m=Math.max(...v)*1.1,p=v.map((y,i)=>[i*w/(v.length-1),h-y/m*h]);return`<path d="M0,${h} ${p.map(q=>'L'+q).join(' ')} L${w},${h}Z" fill="${c}" opacity=".18"/><polyline fill="none" stroke="${c}" stroke-width="2.5" points="${p.join(' ')}"/>`};
-function dash(){const od=D.invoices.filter(i=>ds(i)==='Overdue'),odA=od.reduce((a,i)=>a+i.amt,0),paid=D.invoices.filter(i=>i.st==='Paid').reduce((a,i)=>a+i.amt,0),out=D.invoices.filter(i=>ds(i)==='Confirmed').reduce((a,i)=>a+i.amt,0);
-const ST=['Draft','Quotation','Confirmed','Active','Closed'],cl=['#EDE3D8','#D9A441','#C9A88A','#7E9C88','#A29789'],cn=ST.map(s=>D.subs.filter(x=>x.st===s).length);let a=0;const cg=cn.map((n,i)=>{const s=a;a+=n/D.subs.length*100;return`${cl[i]} ${s}% ${a}%`}).join(',');
-const mo=[42,47,51,49,58,63,66,71,75,82,88,94],qt=[140,170,212,264],mm=S.rev==='Month'?mo:qt,mm2=mm.map(x=>x*.62);
-return[`<button class="btn" onclick="location.hash='quotations'">+ New quotation</button>`,`<p class="mut" style="margin-bottom:16px">Welcome back, Maya. Here is how billing looks today.</p><div class="g g4">${kpi('Active subscriptions',D.subs.filter(s=>s.st==='Active').length,'',8.2,[3,4,4,5,6,7,8])}${kpi('Total revenue',94200,'$',12.4,mo.slice(4,11))}${kpi('MRR',58400,'$',6.1,[40,44,45,50,52,55,58])}${kpi('Overdue invoices',od.length,'',-3.5,[1,3,2,2,4,3,2])}</div>
-<p class="mut" style="margin:-8px 0 16px">Overdue amount: <b>${M(odA)}</b> across ${od.length} invoices</p>
-<div class="g g2" style="grid-template-columns:2fr 1fr"><div class="card"><div style="display:flex;justify-content:space-between"><h3>Revenue</h3><div class="tabs">${['Month','Quarter'].map(x=>`<button class="${S.rev===x?'on':''}" onclick="S.rev='${x}';R()">${x}</button>`).join('')}</div></div><svg viewBox="0 0 600 200" width="100%" role="img" aria-label="Revenue chart">${area(mm,'#A47551')}${area(mm2,'#7E9C88')}</svg><small class="mut"><span style="color:#A47551">●</span> Revenue &nbsp; <span style="color:#7E9C88">●</span> MRR</small></div>
-<div class="card"><h3>Subscription status</h3><div style="display:flex;gap:16px;align-items:center;margin-top:12px;flex-wrap:wrap"><div style="width:120px;height:120px;border-radius:50%;background:conic-gradient(${cg});mask:radial-gradient(circle 36px,transparent 98%,#000);-webkit-mask:radial-gradient(circle 36px,transparent 98%,#000)"></div><div>${ST.map((s,i)=>`<p><span style="color:${cl[i]}">●</span> ${s} <b>${cn[i]}</b></p>`).join('')}</div></div></div></div>
-<div class="g g2"><div class="card aic"><h3>AI Insights</h3>${[['4 invoices likely to become overdue this week','Send reminders','Reminders queued for 4 customers'],['Churn risk: 3 customers show falling usage','Review accounts','Opened churn-risk report'],['Annual upgrades could add $6.2k MRR','See candidates','Listed 5 upgrade candidates']].map(x=>`<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;padding:10px 0;border-bottom:1px solid var(--s2)"><span>${x[0]}</span><button class="btn o" onclick="toast('${x[2]}')">${x[1]}</button></div>`).join('')}</div>
-<div class="card"><h3>Financial summary</h3><table style="margin-top:8px"><tr><td>Paid</td><td>${B('Paid')}</td><td><b>${M(paid)}</b></td></tr><tr><td>Outstanding</td><td>${B('Confirmed')}</td><td><b>${M(out)}</b></td></tr><tr><td>Overdue</td><td>${B('Overdue')}</td><td><b>${M(odA)}</b></td></tr></table></div></div>
-<div class="g g2"><div class="card"><h3>Recent invoices</h3>${D.invoices.slice(0,4).map(i=>`<p style="display:flex;justify-content:space-between;padding:8px 0">${i.n} · ${i.c} <span>${M(i.amt)} ${B(ds(i))}</span></p>`).join('')}</div>
-<div class="card"><h3>Upcoming renewals</h3>${D.subs.filter(s=>s.st==='Active'||s.st==='Confirmed').map(s=>`<p style="display:flex;justify-content:space-between;padding:8px 0">${s.c} <span class="mut">${s.next} · ${M(s.amt)}</span></p>`).join('')}</div></div>`]}
-// quotations
-function quo(){const tot=q=>(D.products.find(p=>p.name===q.product).price*q.qty*(1-q.disc/100)*(1+q.tax/100)).toFixed(2);
-const T=['Standard annual','Onboarding bundle','Team starter'];
-return[`<button class="btn" onclick="form('quotes')">+ Create quotation</button>`,`<div class="tabs">${['Quotations','Templates'].map(x=>`<button class="${(S.qt||'Quotations')===x?'on':''}" onclick="S.qt='${x}';R()">${x}</button>`).join('')}</div>`+((S.qt||'Quotations')==='Templates'?`<div class="g g4">${T.map(t=>`<div class="card"><b>${t}</b><p class="mut" style="margin:6px 0 12px">Prefilled plan, products and tax.</p><button class="btn o" onclick="form('quotes')">Use template</button></div>`).join('')}</div>`:`<div class="card tp tw rt"><table><thead><tr><th>Quote</th><th>Customer</th><th>Plan</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>${D.quotes.map(q=>`<tr><td data-l="Quote">${q.n}</td><td data-l="Customer">${q.customer}</td><td data-l="Plan">${q.plan}</td><td data-l="Total">${M(tot(q))}</td><td data-l="Status">${B(q.st)}</td><td>${q.st!=='Converted'?`<button class="btn" onclick="conv(${q.id})">Convert to Subscription</button>`:''}</td></tr>`).join('')}</tbody></table></div>`)]}
-function conv(id){const q=D.quotes.find(x=>x.id===id);confirmD(`Convert ${q.n} to a subscription for ${q.customer}?`,()=>{q.st='Converted';D.subs.push({id:D.subs.length+1,n:'SUB-'+(1001+D.subs.length),c:q.customer,plan:q.plan,st:'Confirmed',amt:Math.round(D.products.find(p=>p.name===q.product).price*q.qty),next:'2026-12-01',paused:0});toast('Subscription created from '+q.n);R()},'Convert')}
-// subscriptions
-const ST=['Draft','Quotation','Confirmed','Active','Closed'];
-function subs(){if(S.sel)return subD(D.subs.find(s=>s.id===S.sel));
-const tb=`<div class="card tp tw rt"><table><thead><tr><th>Subscription</th><th>Customer</th><th>Plan</th><th>Amount</th><th>Next billing</th><th>Status</th></tr></thead><tbody>${D.subs.map(s=>`<tr class="r" onclick="S.sel=${s.id};R()"><td data-l="ID">${s.n}</td><td data-l="Customer">${s.c}</td><td data-l="Plan">${s.plan}</td><td data-l="Amount">${M(s.amt)}</td><td data-l="Next">${s.next}</td><td data-l="Status">${B(s.paused?'Paused':s.st)}</td></tr>`).join('')}</tbody></table></div>`;
-const kb=`<div class="kb">${ST.map(st=>`<div><b>${st}</b> <small class="mut">${D.subs.filter(s=>s.st===st).length}</small>${D.subs.filter(s=>s.st===st).map(s=>`<div class="card" onclick="S.sel=${s.id};R()"><b>${s.c}</b><br><small class="mut">${s.n} · ${s.plan}</small><br>${M(s.amt)}</div>`).join('')}</div>`).join('')}</div>`;
-return[`<button class="btn" onclick="location.hash='quotations'">+ New subscription</button>`,`<div class="tabs">${['table','kanban'].map(v=>`<button class="${S.view2===v||(!S.view2&&v==='table')?'on':''}" onclick="S.view2='${v}';R()">${v==='table'?'Table':'Kanban'}</button>`).join('')}</div>${S.view2==='kanban'?kb:tb}`]}
-function subD(s){const i=ST.indexOf(s.st),inv=D.invoices.filter(x=>x.c===s.c);
-const mv=(n,m)=>`S.sel&&(D.subs.find(x=>x.id===${s.id}).st='${n}');toast('${m}');R()`;
-return[`<button class="btn o" onclick="S.sel=null;R()">← All subscriptions</button>`,`<div class="card"><h2>${s.n} ${B(s.paused?'Paused':s.st)}</h2><div class="stp">${ST.map((x,j)=>`<div class="${j<i?'dn2':j===i?'cur':''}">${x}</div>`).join('')}</div>
-<p><b>Customer</b> ${s.c} &nbsp; <b>Plan</b> ${s.plan} &nbsp; <b>Billing</b> ${M(s.amt)} · next ${s.next}</p><div class="tb" style="margin-top:16px">${s.st==='Draft'||s.st==='Quotation'?`<button class="btn" onclick="${mv(ST[i+1],'Moved to '+ST[i+1])}">Confirm</button>`:''}${s.st==='Confirmed'?`<button class="btn" onclick="${mv('Active','Activated')}">Activate</button>`:''}<button class="btn o" onclick="D.subs.find(x=>x.id===${s.id}).paused^=1;toast('Pause toggled');R()">${s.paused?'Resume':'Pause'}</button><button class="btn o" onclick="toast('Renewed for another cycle')">Renew</button><button class="btn d" onclick="confirmD('Close ${s.n}?',()=>{${mv('Closed','Subscription closed')}},'Close','d')">Close</button></div></div>
-<div class="card" style="margin-top:16px"><h3>Invoices generated</h3>${inv.map(x=>`<p style="padding:8px 0">${x.n} ${B(ds(x))} ${M(x.amt)} · due ${x.due}</p>`).join('')||'<p class="mut">None yet.</p>'}</div>`]}
-// invoices
-function invs(){if(S.inv)return invD(D.invoices.find(i=>i.id===S.inv));const T=['All','Draft','Confirmed','Paid','Overdue'],rows=D.invoices.filter(i=>S.tab==='All'||ds(i)===S.tab);
-return[`<button class="btn" onclick="toast('Billing run complete: 2 draft invoices generated')">Run billing</button>`,`<div class="tabs">${T.map(t=>`<button class="${S.tab===t?'on':''}" onclick="S.tab='${t}';R()">${t}</button>`).join('')}</div>${rows.length?`<div class="card tp tw rt"><table><thead><tr><th>Invoice</th><th>Customer</th><th>Amount</th><th>Due</th><th>Status</th><th></th></tr></thead><tbody>${rows.map(i=>`<tr class="r ${ds(i)==='Overdue'?'ov':''}" onclick="S.inv=${i.id};R()"><td data-l="Invoice">${i.n} <small class="mut">auto</small></td><td data-l="Customer">${i.c}</td><td data-l="Amount">${M(i.amt)}</td><td data-l="Due">${i.due}${ds(i)==='Overdue'?` <b class="dn">${dO(i)}d overdue</b>`:''}</td><td data-l="Status">${B(ds(i))}</td><td>${i.st==='Confirmed'?`<button class="btn o" onclick="event.stopPropagation();pay(${i.id})">Record payment</button>`:''}</td></tr>`).join('')}</tbody></table></div>`:'<div class="card empty"><b>No invoices</b>Nothing in this tab yet.</div>'}`]}
-function pay(id){const i=D.invoices.find(x=>x.id===id),o=modal(`<h2>Record payment · ${i.n}</h2><label>Amount</label><input id="pa" type="number" value="${i.amt}"><label>Method</label><select><option>Card</option><option>Bank transfer</option><option>Cash</option></select><label>Date</label><input type="date" value="2026-10-31"><label>Reference</label><input placeholder="e.g. TXN-9921"><div class="ft"><button class="btn o" onclick="X()">Cancel</button><button class="btn" id="ok">Record payment</button></div>`);o.querySelector('#ok').onclick=()=>{if(!(+pa.value>0))return toast('Enter an amount above zero');i.st='Paid';X();toast(i.n+' marked as Paid');R()}}
-function invD(i){return[`<button class="btn o np" onclick="S.inv=null;R()">← All invoices</button>`,`<div class="card" style="max-width:720px"><div style="display:flex;justify-content:space-between"><h2>Admin Panel<br><small class="mut">Invoice ${i.n}</small></h2>${B(ds(i))}</div><p style="margin:16px 0">Billed to <b>${i.c}</b><br>Due ${i.due}${ds(i)==='Overdue'?` · <b class="dn">${dO(i)} days overdue</b>`:''}</p><table><tr><td>Subscription charge</td><td>${M((i.amt/1.18).toFixed(2))}</td></tr><tr><td>Tax (18%)</td><td>${M((i.amt-i.amt/1.18).toFixed(2))}</td></tr><tr><td><b>Total</b></td><td><b>${M(i.amt)}</b></td></tr></table>
-<div class="tb np" style="margin-top:16px">${i.st==='Draft'?`<button class="btn" onclick="D.invoices.find(x=>x.id===${i.id}).st='Confirmed';toast('Invoice confirmed');R()">Confirm invoice</button>`:''}${i.st==='Confirmed'?`<button class="btn" onclick="pay(${i.id})">Record payment</button>`:''}<button class="btn o" onclick="toast('Invoice PDF downloaded (mock)')">Download PDF</button><button class="btn o" onclick="print()">Print</button></div></div>`]}
-// shell
-const P={dashboard:dash,customers:()=>crud('customers'),products:()=>crud('products'),plans:()=>crud('plans'),taxes:()=>crud('taxes'),discounts:()=>crud('discounts'),quotations:quo,subscriptions:subs,invoices:invs};
-$('#nv').innerHTML=NAV.map(n=>`<a href="#${slug(n)}" id="n_${slug(n)}"><svg class="i" viewBox="0 0 24 24"><path d="${IC[n]}"/></svg><span class="lb">${n}</span></a>`).join('');
-let cur='dashboard';
-function R(keep){const[a,b]=P[cur](),t=NAV.find(n=>slug(n)===cur);
-if(keep){$('#tbl').innerHTML=b.match(/<div id="tbl">([\s\S]*)<\/div>$/)[1];return}
-$('#mn').innerHTML=`<div class="ph"><div><small>Admin Panel / ${t}</small><h1>${t}</h1></div><div>${a}</div></div>${b}`;
-document.querySelectorAll('.cu').forEach(e=>{const v=+e.dataset.v,t0=performance.now(),p=e.dataset.p;(function f(n){const k=Math.min(1,(n-t0)/800);e.textContent=p+Math.round(v*(1-Math.pow(1-k,3))).toLocaleString();k<1&&requestAnimationFrame(f)})(t0)})}
-function go(){cur=P[location.hash.slice(1)]?location.hash.slice(1):'dashboard';S.sel=S.inv=null;app.classList.remove('open');
-document.querySelectorAll('aside nav a').forEach(a=>a.classList.toggle('on',a.id==='n_'+cur));
-$('#mn').innerHTML='<div class="g g4"><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div></div>';setTimeout(R,300)}
-function ask(){const o=modal(`<h3>Ask AI anything</h3><input id="aq" placeholder="Search pages or ask a question…" style="margin:12px 0">${NAV.map(n=>`<p><a href="#${slug(n)}" onclick="X()" style="color:var(--c);text-decoration:none;display:block;padding:6px 0">${n}</a></p>`).join('')}<div class="ft"><button class="btn ai" id="aa">Ask</button></div>`);o.querySelector('#aa').onclick=()=>{X();toast('3 invoices are overdue totaling '+M(D.invoices.filter(i=>ds(i)==='Overdue').reduce((a,i)=>a+i.amt,0)))}}
-addEventListener('hashchange',go);addEventListener('keydown',e=>{if(e.key==='Escape')X();if((e.metaKey||e.ctrlKey)&&e.key==='k'){e.preventDefault();ask()}});go();
-</script></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Admin Panel</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+    <aside>
+      <div class="logo"><i>A</i><span class="lb">Admin Panel</span></div>
+      <nav id="nv"></nav>
+      <div class="promo">
+        <b>AI assistant</b>
+        <p class="mut" style="margin:6px 0 10px">Spot churn risk and late payers before they hurt revenue.</p>
+        <button class="btn ai" onclick="ask()">Ask AI</button>
+      </div>
+      <div class="usr">
+        <div class="av">MR</div>
+        <span><b>Maya Rao</b><br><small class="mut">Finance lead</small></span>
+      </div>
+    </aside>
+    <main>
+      <header>
+        <button class="ib mb" aria-label="Menu" onclick="app.classList.toggle('open')">☰</button>
+        <button class="ib dsk" aria-label="Collapse sidebar" onclick="app.classList.toggle('col')">⇤</button>
+        <button class="ask" onclick="ask()">Search or ask AI anything… <b>⌘K</b></button>
+        <select class="dsk" style="width:auto" aria-label="Date range">
+          <option>Last 30 days</option>
+          <option>This quarter</option>
+          <option>This year</option>
+        </select>
+        <button class="ib" aria-label="Notifications" onclick="toast('You have 3 new alerts')">🔔</button>
+        <div class="av">MR</div>
+      </header>
+      <div id="mn"></div>
+    </main>
+  </div>
+  <div id="ts"></div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>

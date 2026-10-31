@@ -20,3 +20,10 @@ class ResConfigSettings(models.TransientModel):
         default=5,
         help='Number of days after invoice due date before marking subscription overdue or suspended.'
     )
+    subscription_default_validity_days = fields.Integer(
+        string='Default Quotation Validity (Days)',
+        config_parameter='subscription_base.default_validity_days',
+        default=30,
+        help='System-wide default number of days a quotation remains valid after its creation date. '
+             'Individual quotations may override this value.'
+    )

@@ -10,15 +10,23 @@
             <tree string="Quotations &amp; Subscriptions"
                   default_order="date_quotation desc, id desc"
                   decoration-muted="state in ('cancelled', 'closed')"
-                  decoration-warning="state == 'paused'"
+                  decoration-warning="state == 'paused' or expiration_status == 'expiring_soon'"
                   decoration-success="state in ('confirmed', 'active')"
-                  decoration-info="state in ('draft', 'quotation')"
+                  decoration-info="state in ('draft', 'quotation') and expiration_status == 'valid'"
+                  decoration-danger="is_expired == True"
                   sample="1">
                 <field name="name" string="Quotation Reference"/>
                 <field name="partner_id" string="Customer Name"/>
                 <field name="plan_id" string="Subscription Plan"/>
                 <field name="date_quotation" string="Quotation Date"/>
+                <field name="validity_days" string="Validity (Days)" optional="show"/>
                 <field name="date_expiration" string="Expiry Date"/>
+                <field name="expiration_status" widget="badge"
+                       decoration-success="expiration_status == 'valid'"
+                       decoration-warning="expiration_status == 'expiring_soon'"
+                       decoration-danger="expiration_status == 'expired'"
+                       optional="show"/>
+                <field name="is_expired" column_invisible="True"/>
                 <field name="currency_id" column_invisible="True"/>
                 <field name="amount_total" string="Total Amount" sum="Total"/>
                 <field name="state" widget="badge"
@@ -108,7 +116,14 @@
                         <group name="quotation_info" string="Quotation Information">
                             <field name="plan_id" readonly="state in ('confirmed', 'active', 'closed', 'cancelled')"/>
                             <field name="date_quotation" readonly="state in ('confirmed', 'active', 'closed', 'cancelled')"/>
+                            <field name="validity_days" readonly="state in ('confirmed', 'active', 'closed', 'cancelled')"
+                                   help="Number of days from quotation date until expiry. Changing this will auto-recalculate the expiry date."/>
                             <field name="date_expiration" readonly="state in ('confirmed', 'active', 'closed', 'cancelled')"/>
+                            <field name="expiration_status" widget="badge"
+                                   decoration-success="expiration_status == 'valid'"
+                                   decoration-warning="expiration_status == 'expiring_soon'"
+                                   decoration-danger="expiration_status == 'expired'"
+                                   invisible="state in ('confirmed', 'active', 'paused', 'closed', 'cancelled')"/>
                             <field name="date_start" string="Contract Start" readonly="state in ('confirmed', 'active', 'closed', 'cancelled')"/>
                             <field name="date_end" string="Contract End" readonly="state in ('closed', 'cancelled')"/>
                             <field name="company_id" groups="base.group_multi_company"/>
@@ -197,10 +212,18 @@
                 <separator/>
                 <filter string="Expired Quotations" name="filter_expired"
                         domain="[('state', 'in', ('draft', 'quotation')), ('date_expiration', '&lt;', context_today)]"/>
+                <!-- Expiration Status filters — use stored computed field for reliable server-side filtering -->
+                <filter string="Valid" name="filter_exp_valid"
+                        domain="[('expiration_status', '=', 'valid'), ('state', 'in', ('draft', 'quotation'))]"/>
+                <filter string="Expiring Soon" name="filter_exp_soon"
+                        domain="[('expiration_status', '=', 'expiring_soon')]"/>
+                <filter string="Expired" name="filter_exp_expired"
+                        domain="[('expiration_status', '=', 'expired')]"/>
                 <group expand="0" string="Group By">
                     <filter string="Customer" name="group_by_partner" context="{'group_by': 'partner_id'}"/>
                     <filter string="Plan" name="group_by_plan" context="{'group_by': 'plan_id'}"/>
                     <filter string="Status" name="group_by_state" context="{'group_by': 'state'}"/>
+                    <filter string="Expiration Status" name="group_by_exp_status" context="{'group_by': 'expiration_status'}"/>
                     <filter string="Quotation Month" name="group_by_quotation_date" context="{'group_by': 'date_quotation:month'}"/>
                 </group>
             </search>
