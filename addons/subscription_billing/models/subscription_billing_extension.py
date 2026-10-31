@@ -321,6 +321,10 @@ class SubscriptionSubscription(models.Model):
         """
         self.ensure_one()
         # 1. Validate subscription status
+        if self.state == 'closed':
+            raise UserError(_(
+                "Cannot generate invoice: Subscription '%s' has been closed and is permanently ineligible for billing."
+            ) % self.name)
         if self.state != 'active':
             state_label = dict(self._fields['state'].selection).get(self.state, self.state)
             raise UserError(_(

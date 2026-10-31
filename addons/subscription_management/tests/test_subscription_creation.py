@@ -157,6 +157,7 @@ class TestSubscriptionCreation(TransactionCase):
             'payment_term_id': payment_term.id if payment_term else self.payment_term.id,
             'line_ids': [(0, 0, l) for l in line_vals],
         })
+        quotation.action_set_quotation()
         quotation.action_confirm()
         return quotation
 

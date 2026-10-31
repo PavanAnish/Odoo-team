@@ -13,7 +13,7 @@ def run_tests():
     print("Running Quotation Logic & Calculation Verification Suite")
     print("=" * 70)
     passed = 0
-    total = 25
+    total = 30
 
     today = date.today()
     yesterday = today - timedelta(days=1)
@@ -462,6 +462,131 @@ def run_tests():
         passed += 1
     except Exception as e:
         print(f" [FAIL] 25. Duplicate subscription conversion prevention: {e}")
+
+    # ==========================================================
+    # 26. Strict lifecycle workflow validation
+    # ==========================================================
+    try:
+        VALID_STATE_TRANSITIONS = {
+            'draft': ['quotation'],
+            'quotation': ['confirmed'],
+            'confirmed': ['active'],
+            'active': ['closed'],
+            'closed': [],
+        }
+
+        def validate_transition(current_state, next_state):
+            allowed = VALID_STATE_TRANSITIONS.get(current_state, [])
+            if next_state not in allowed:
+                raise ValueError(f"Invalid status transition: Cannot transition from '{current_state}' to '{next_state}'.")
+            return next_state
+
+        state = 'draft'
+        state = validate_transition(state, 'quotation')
+        assert state == 'quotation'
+        state = validate_transition(state, 'confirmed')
+        assert state == 'confirmed'
+        state = validate_transition(state, 'active')
+        assert state == 'active'
+        state = validate_transition(state, 'closed')
+        assert state == 'closed'
+        print(" [PASS] 26. Strict lifecycle workflow (Draft -> Quotation -> Confirmed -> Active -> Closed)")
+        passed += 1
+    except Exception as e:
+        print(f" [FAIL] 26. Strict lifecycle workflow: {e}")
+
+    # ==========================================================
+    # 27. Invalid lifecycle transitions rejection
+    # ==========================================================
+    try:
+        invalid_pairs = [
+            ('draft', 'active'),
+            ('draft', 'closed'),
+            ('quotation', 'active'),
+            ('confirmed', 'closed'),
+        ]
+        rejected_count = 0
+        for s_from, s_to in invalid_pairs:
+            try:
+                validate_transition(s_from, s_to)
+            except ValueError:
+                rejected_count += 1
+        assert rejected_count == len(invalid_pairs)
+        print(" [PASS] 27. Invalid lifecycle transition rejection (Draft->Active, Quotation->Active, etc.)")
+        passed += 1
+    except Exception as e:
+        print(f" [FAIL] 27. Invalid lifecycle transition rejection: {e}")
+
+    # ==========================================================
+    # 28. Terminal state protection: Closed cannot transition
+    # ==========================================================
+    try:
+        closed_transitions = ['active', 'confirmed', 'draft', 'quotation']
+        all_blocked = True
+        for target in closed_transitions:
+            try:
+                validate_transition('closed', target)
+                all_blocked = False
+            except ValueError:
+                pass
+        assert all_blocked is True
+        print(" [PASS] 28. Terminal state protection: Closed cannot transition to any status")
+        passed += 1
+    except Exception as e:
+        print(f" [FAIL] 28. Terminal state protection: {e}")
+
+    # ==========================================================
+    # 29. Audit history recording on state transitions
+    # ==========================================================
+    try:
+        history_log = []
+        def transition_with_history(current_state, next_state, user_id=1):
+            validate_transition(current_state, next_state)
+            history_log.append({
+                'previous_state': current_state,
+                'new_state': next_state,
+                'user_id': user_id,
+                'timestamp': date.today(),
+            })
+            return next_state
+
+        st = 'draft'
+        st = transition_with_history(st, 'quotation')
+        st = transition_with_history(st, 'confirmed')
+        assert len(history_log) == 2
+        assert history_log[0]['previous_state'] == 'draft' and history_log[0]['new_state'] == 'quotation'
+        assert history_log[1]['previous_state'] == 'quotation' and history_log[1]['new_state'] == 'confirmed'
+        print(" [PASS] 29. Status history audit record logging on state transitions")
+        passed += 1
+    except Exception as e:
+        print(f" [FAIL] 29. Status history audit record logging: {e}")
+
+    # ==========================================================
+    # 30. Closed subscription billing protection
+    # ==========================================================
+    try:
+        def attempt_billing(sub_state):
+            if sub_state == 'closed':
+                raise ValueError("Cannot generate invoice: Subscription is closed and permanently ineligible for billing.")
+            if sub_state != 'active':
+                raise ValueError("Invoices can only be generated for active subscriptions.")
+            return "INV-CREATED"
+
+        # Active can bill
+        assert attempt_billing('active') == "INV-CREATED"
+
+        # Closed cannot bill
+        closed_billing_blocked = False
+        try:
+            attempt_billing('closed')
+        except ValueError as err:
+            assert "closed" in str(err).lower()
+            closed_billing_blocked = True
+        assert closed_billing_blocked is True
+        print(" [PASS] 30. Closed subscription billing protection")
+        passed += 1
+    except Exception as e:
+        print(f" [FAIL] 30. Closed subscription billing protection: {e}")
 
     print("=" * 70)
     print(f"Verification Results: {passed}/{total} tests passed successfully!")

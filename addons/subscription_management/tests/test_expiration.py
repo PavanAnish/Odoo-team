@@ -75,6 +75,8 @@ try:
                 'product_id': self.product.id,
                 'quantity': 1,
             })
+            if not exp_date or exp_date >= today:
+                sub.action_set_quotation()
             return sub
 
         # ==================================================================

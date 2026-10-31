@@ -43,7 +43,11 @@ class TestSubscriptionManagement(TransactionCase):
             })],
         })
         self.assertEqual(sub.state, 'draft')
+        sub.action_set_quotation()
+        self.assertEqual(sub.state, 'quotation')
         sub.action_confirm()
         self.assertEqual(sub.state, 'confirmed')
         sub.action_activate()
         self.assertEqual(sub.state, 'active')
+        sub.action_close()
+        self.assertEqual(sub.state, 'closed')

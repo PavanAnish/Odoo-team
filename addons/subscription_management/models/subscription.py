@@ -572,24 +572,28 @@ class SubscriptionSubscription(models.Model):
 
     # --- Quotation Lifecycle Actions ---
 
-    def action_send_quotation(self):
-        """Transition quotation from draft to quotation sent."""
+    def action_set_quotation(self):
+        """Transition subscription from Draft to Quotation."""
+        self._check_transition_permission()
         for sub in self:
-            if sub.state != 'draft':
-                raise ValidationError(_("Only draft quotations can be marked as 'Quotation Sent'."))
+            sub._validate_state_transition(sub.state, 'quotation')
             if not sub.line_ids:
-                raise ValidationError(_("Cannot send a quotation without any product lines."))
+                raise ValidationError(_("Cannot move quotation '%s' to Quotation status without product lines.") % sub.name)
             sub._validate_expiration_date()
             sub._validate_quotation_integrity()
-            sub.state = 'quotation'
+            sub.write({'state': 'quotation'})
             sub.message_post(body=_("Quotation marked as sent to customer %s.") % sub.partner_id.name)
         return True
 
+    def action_send_quotation(self):
+        """Alias for action_set_quotation for backward compatibility."""
+        return self.action_set_quotation()
+
     def action_confirm(self):
-        """Confirm customer quotation and prepare for subscription activation."""
+        """Confirm customer quotation and move to Confirmed status."""
+        self._check_transition_permission()
         for sub in self:
-            if sub.state not in ('draft', 'quotation'):
-                raise ValidationError(_("Only draft or sent quotations can be confirmed."))
+            sub._validate_state_transition(sub.state, 'confirmed')
             if not sub.line_ids:
                 raise ValidationError(_("Cannot confirm a quotation without product lines."))
 
@@ -600,30 +604,55 @@ class SubscriptionSubscription(models.Model):
             if sub.discount_id and sub.discount_id.max_usage > 0:
                 sub.discount_id.usage_count += 1
 
-            sub.state = 'confirmed'
             if not sub.next_billing_date:
                 sub.next_billing_date = sub.date_start or fields.Date.context_today(sub)
 
+            sub.write({'state': 'confirmed'})
             sub.message_post(body=_("Quotation confirmed successfully with total %s.") % sub.amount_total)
         return True
 
     def action_activate(self):
-        """Activate a confirmed quotation or subscription into active status.
-        Kept for backward compatibility with existing tests and workflows."""
+        """Activate a confirmed quotation into an active subscription."""
+        self._check_transition_permission()
         for sub in self:
-            if sub.state != 'confirmed':
-                raise ValidationError(_("Only confirmed quotations can be activated into active subscriptions."))
+            sub._validate_state_transition(sub.state, 'active')
             if not sub.subscription_ref:
                 sub_number = self.env['ir.sequence'].next_by_code('subscription.subscription.active')
                 if not sub_number or sub_number in ('/', _('New'), 'False'):
                     year_str = str(fields.Date.context_today(self).year)
-                    sub_number = f"SUB/{year_str}/{sub.id or 1:05d}"
+                    sub_count = self.search_count([('name', 'like', 'SUB/%')]) + 1
+                    sub_number = f"SUB/{year_str}/{sub_count:05d}"
                 sub.subscription_ref = sub_number
             if not sub.date_subscription_end:
                 sub.date_subscription_end = sub._compute_subscription_end_date()
-            sub.state = 'active'
+            sub.write({'state': 'active'})
             sub.message_post(body=_("Subscription activated with reference %s.") % sub.subscription_ref)
         return True
+
+    def action_close(self, reason=None):
+        """Transition subscription from Active to Closed."""
+        self._check_transition_permission()
+        for sub in self:
+            sub._validate_state_transition(sub.state, 'closed')
+            # Critical billing protection: clear next_billing_date on closure
+            ctx = dict(self.env.context, transition_reason=reason or _("Closed subscription contract"))
+            sub.with_context(ctx).write({
+                'state': 'closed',
+                'next_billing_date': False,
+            })
+            close_msg = _("Subscription has been permanently closed.")
+            if reason:
+                close_msg += f" Reason: {reason}"
+            sub.message_post(body=close_msg)
+        return True
+
+    def action_cancel(self):
+        """Disallowed under strict lifecycle."""
+        raise ValidationError(_("Cancellation is not allowed under the strict lifecycle (Draft -> Quotation -> Confirmed -> Active -> Closed)."))
+
+    def action_reset_to_draft(self):
+        """Disallowed under strict lifecycle."""
+        raise ValidationError(_("Reset to draft is not allowed under the strict lifecycle (Draft -> Quotation -> Confirmed -> Active -> Closed)."))
 
     def action_create_subscription(self):
         """Convert confirmed quotation(s) into active subscription record(s).
@@ -789,24 +818,6 @@ class SubscriptionSubscription(models.Model):
         elif period == 'yearly':
             return start + relativedelta(years=interval)
         return start + relativedelta(months=1)
-
-    def action_cancel(self):
-        """Cancel an eligible draft or sent quotation."""
-        for sub in self:
-            if sub.state not in ('draft', 'quotation', 'confirmed'):
-                raise ValidationError(_("Only draft, sent, or confirmed quotations can be cancelled."))
-            sub.state = 'cancelled'
-            sub.message_post(body=_("Quotation has been cancelled."))
-        return True
-
-    def action_reset_to_draft(self):
-        """Reset cancelled or sent quotation back to draft."""
-        for sub in self:
-            if sub.state not in ('quotation', 'cancelled'):
-                raise ValidationError(_("Only sent or cancelled quotations can be reset to draft."))
-            sub.state = 'draft'
-            sub.message_post(body=_("Quotation reset to draft state."))
-        return True
 
     def _validate_expiration_date(self):
         """Reject confirmation or sending of expired quotations."""
