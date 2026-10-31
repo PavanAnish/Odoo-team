@@ -227,3 +227,299 @@ class TestSubscriptionBilling(TransactionCase):
         matching = [inv for inv in invoices if inv.subscription_id == sub_no_date]
         self.assertTrue(matching, "Active subscription with missing next_billing_date must be billed.")
         self.assertTrue(sub_no_date.next_billing_date, "Next billing date must be set after billing.")
+
+    # ------------------------------------------------------------------
+    # Invoice Calculation Tests
+    # ------------------------------------------------------------------
+
+    def test_07_invoice_no_discount(self):
+        """Generate an invoice without discounts: total = quantity × price_unit."""
+        if not hasattr(self, 'env'):
+            return
+
+        sub = self.env['subscription.subscription'].create({
+            'partner_id': self.partner.id,
+            'plan_id': self.plan_monthly.id,
+            'date_start': self.today,
+            'next_billing_date': self.today,
+            'line_ids': [(0, 0, {
+                'product_id': self.product.id,
+                'quantity': 3.0,
+                'price_unit': 100.0,
+            })],
+        })
+        sub.action_confirm()
+        invoice = sub.action_generate_invoice()
+
+        self.assertTrue(invoice)
+        # Subscription line subtotal
+        line = sub.line_ids[0]
+        self.assertAlmostEqual(line.price_subtotal, 300.0, places=2)
+        # Invoice snapshot amounts
+        self.assertAlmostEqual(invoice.subscription_amount_untaxed, 300.0, places=2)
+        self.assertAlmostEqual(invoice.subscription_amount_tax, 0.0, places=2)
+        self.assertAlmostEqual(invoice.subscription_amount_total, 300.0, places=2)
+        # Calculation details JSON must exist
+        self.assertTrue(invoice.subscription_calculation_details)
+
+    def test_08_invoice_percentage_discount(self):
+        """Generate an invoice with percentage discount: 10% off $100 × 2 = $180."""
+        if not hasattr(self, 'env'):
+            return
+
+        sub = self.env['subscription.subscription'].create({
+            'partner_id': self.partner.id,
+            'plan_id': self.plan_monthly.id,
+            'date_start': self.today,
+            'next_billing_date': self.today,
+            'line_ids': [(0, 0, {
+                'product_id': self.product.id,
+                'quantity': 2.0,
+                'price_unit': 100.0,
+                'discount_type': 'percent',
+                'discount': 10.0,
+            })],
+        })
+        sub.action_confirm()
+        invoice = sub.action_generate_invoice()
+
+        self.assertTrue(invoice)
+        line = sub.line_ids[0]
+        self.assertAlmostEqual(line.price_subtotal, 180.0, places=2)
+        self.assertAlmostEqual(invoice.subscription_amount_untaxed, 180.0, places=2)
+        self.assertAlmostEqual(invoice.subscription_amount_total, 180.0, places=2)
+
+    def test_09_invoice_fixed_discount(self):
+        """Generate an invoice with fixed discount: $100 - $15 fixed = $85."""
+        if not hasattr(self, 'env'):
+            return
+
+        sub = self.env['subscription.subscription'].create({
+            'partner_id': self.partner.id,
+            'plan_id': self.plan_monthly.id,
+            'date_start': self.today,
+            'next_billing_date': self.today,
+            'line_ids': [(0, 0, {
+                'product_id': self.product.id,
+                'quantity': 1.0,
+                'price_unit': 100.0,
+                'discount_type': 'fixed',
+                'discount_fixed': 15.0,
+            })],
+        })
+        sub.action_confirm()
+        invoice = sub.action_generate_invoice()
+
+        self.assertTrue(invoice)
+        line = sub.line_ids[0]
+        self.assertAlmostEqual(line.price_subtotal, 85.0, places=2)
+        self.assertAlmostEqual(invoice.subscription_amount_untaxed, 85.0, places=2)
+        self.assertAlmostEqual(invoice.subscription_amount_total, 85.0, places=2)
+
+    def test_10_invoice_with_tax(self):
+        """Generate an invoice with applicable taxes: $100 + 18% tax = $118."""
+        if not hasattr(self, 'env'):
+            return
+
+        tax_18 = self.env['account.tax'].create({
+            'name': 'Tax 18%',
+            'type_tax_use': 'sale',
+            'amount_type': 'percent',
+            'amount': 18.0,
+        })
+
+        sub = self.env['subscription.subscription'].create({
+            'partner_id': self.partner.id,
+            'plan_id': self.plan_monthly.id,
+            'date_start': self.today,
+            'next_billing_date': self.today,
+            'line_ids': [(0, 0, {
+                'product_id': self.product.id,
+                'quantity': 1.0,
+                'price_unit': 100.0,
+                'tax_ids': [(6, 0, [tax_18.id])],
+            })],
+        })
+        sub.action_confirm()
+        invoice = sub.action_generate_invoice()
+
+        self.assertTrue(invoice)
+        line = sub.line_ids[0]
+        self.assertAlmostEqual(line.price_subtotal, 100.0, places=2)
+        self.assertAlmostEqual(line.price_tax, 18.0, places=2)
+        self.assertAlmostEqual(line.price_total, 118.0, places=2)
+        self.assertAlmostEqual(invoice.subscription_amount_untaxed, 100.0, places=2)
+        self.assertAlmostEqual(invoice.subscription_amount_tax, 18.0, places=2)
+        self.assertAlmostEqual(invoice.subscription_amount_total, 118.0, places=2)
+
+    def test_11_invoice_with_tax_and_discount(self):
+        """Generate invoice with both 10% discount and 18% tax on $100.
+        subtotal=90, tax=16.20, total=106.20."""
+        if not hasattr(self, 'env'):
+            return
+
+        tax_18 = self.env['account.tax'].create({
+            'name': 'Tax 18% combo',
+            'type_tax_use': 'sale',
+            'amount_type': 'percent',
+            'amount': 18.0,
+        })
+
+        sub = self.env['subscription.subscription'].create({
+            'partner_id': self.partner.id,
+            'plan_id': self.plan_monthly.id,
+            'date_start': self.today,
+            'next_billing_date': self.today,
+            'line_ids': [(0, 0, {
+                'product_id': self.product.id,
+                'quantity': 1.0,
+                'price_unit': 100.0,
+                'discount_type': 'percent',
+                'discount': 10.0,
+                'tax_ids': [(6, 0, [tax_18.id])],
+            })],
+        })
+        sub.action_confirm()
+        invoice = sub.action_generate_invoice()
+
+        self.assertTrue(invoice)
+        line = sub.line_ids[0]
+        self.assertAlmostEqual(line.price_subtotal, 90.0, places=2)
+        self.assertAlmostEqual(line.price_tax, 16.2, places=2)
+        self.assertAlmostEqual(line.price_total, 106.2, places=2)
+        self.assertAlmostEqual(invoice.subscription_amount_untaxed, 90.0, places=2)
+        self.assertAlmostEqual(invoice.subscription_amount_tax, 16.2, places=2)
+        self.assertAlmostEqual(invoice.subscription_amount_total, 106.2, places=2)
+
+    def test_12_invoice_multiple_products(self):
+        """Test calculations with multiple product lines."""
+        if not hasattr(self, 'env'):
+            return
+
+        product_b = self.env['product.product'].create({
+            'name': 'Premium Add-on',
+            'type': 'service',
+            'list_price': 50.0,
+            'is_subscription_product': True,
+        })
+
+        tax_10 = self.env['account.tax'].create({
+            'name': 'Tax 10% multi',
+            'type_tax_use': 'sale',
+            'amount_type': 'percent',
+            'amount': 10.0,
+        })
+
+        sub = self.env['subscription.subscription'].create({
+            'partner_id': self.partner.id,
+            'plan_id': self.plan_monthly.id,
+            'date_start': self.today,
+            'next_billing_date': self.today,
+            'line_ids': [
+                # Line 1: 2 × $100, no discount, no tax → subtotal $200
+                (0, 0, {
+                    'product_id': self.product.id,
+                    'quantity': 2.0,
+                    'price_unit': 100.0,
+                }),
+                # Line 2: 1 × $50, 20% discount, 10% tax → subtotal $40, tax $4
+                (0, 0, {
+                    'product_id': product_b.id,
+                    'quantity': 1.0,
+                    'price_unit': 50.0,
+                    'discount_type': 'percent',
+                    'discount': 20.0,
+                    'tax_ids': [(6, 0, [tax_10.id])],
+                }),
+            ],
+        })
+        sub.action_confirm()
+        invoice = sub.action_generate_invoice()
+
+        self.assertTrue(invoice)
+        # Check subscription-level amounts
+        self.assertAlmostEqual(sub.amount_untaxed, 240.0, places=2)
+        self.assertAlmostEqual(sub.amount_tax, 4.0, places=2)
+        self.assertAlmostEqual(sub.amount_total, 244.0, places=2)
+        # Check invoice snapshot
+        self.assertAlmostEqual(invoice.subscription_amount_untaxed, 240.0, places=2)
+        self.assertAlmostEqual(invoice.subscription_amount_tax, 4.0, places=2)
+        self.assertAlmostEqual(invoice.subscription_amount_total, 244.0, places=2)
+        # Verify 2 invoice lines were created
+        self.assertEqual(len(invoice.invoice_line_ids), 2)
+
+    def test_13_decimal_precision_and_rounding(self):
+        """Test decimal precision: $33.33 × 3 must equal $99.99, not $100.00."""
+        if not hasattr(self, 'env'):
+            return
+
+        sub = self.env['subscription.subscription'].create({
+            'partner_id': self.partner.id,
+            'plan_id': self.plan_monthly.id,
+            'date_start': self.today,
+            'next_billing_date': self.today,
+            'line_ids': [(0, 0, {
+                'product_id': self.product.id,
+                'quantity': 3.0,
+                'price_unit': 33.33,
+            })],
+        })
+        sub.action_confirm()
+        invoice = sub.action_generate_invoice()
+
+        self.assertTrue(invoice)
+        line = sub.line_ids[0]
+        # 3 × 33.33 = 99.99 (exact Decimal), NOT 100.00 or 99.98999...
+        self.assertAlmostEqual(line.price_subtotal, 99.99, places=2)
+        self.assertAlmostEqual(invoice.subscription_amount_untaxed, 99.99, places=2)
+        self.assertAlmostEqual(invoice.subscription_amount_total, 99.99, places=2)
+
+    def test_14_calculation_snapshot_preserved(self):
+        """Verify that calculation details are stored as JSON on the invoice."""
+        if not hasattr(self, 'env'):
+            return
+        import json
+
+        tax_5 = self.env['account.tax'].create({
+            'name': 'Snapshot Tax 5%',
+            'type_tax_use': 'sale',
+            'amount_type': 'percent',
+            'amount': 5.0,
+        })
+
+        sub = self.env['subscription.subscription'].create({
+            'partner_id': self.partner.id,
+            'plan_id': self.plan_monthly.id,
+            'date_start': self.today,
+            'next_billing_date': self.today,
+            'line_ids': [(0, 0, {
+                'product_id': self.product.id,
+                'quantity': 2.0,
+                'price_unit': 75.0,
+                'discount_type': 'percent',
+                'discount': 5.0,
+                'tax_ids': [(6, 0, [tax_5.id])],
+            })],
+        })
+        sub.action_confirm()
+        invoice = sub.action_generate_invoice()
+
+        self.assertTrue(invoice.subscription_calculation_details)
+        snapshot = json.loads(invoice.subscription_calculation_details)
+
+        # Verify structure
+        self.assertIn('calculation_timestamp', snapshot)
+        self.assertIn('lines', snapshot)
+        self.assertIn('amount_untaxed', snapshot)
+        self.assertIn('amount_tax', snapshot)
+        self.assertIn('amount_total', snapshot)
+
+        # Verify line detail
+        self.assertEqual(len(snapshot['lines']), 1)
+        line = snapshot['lines'][0]
+        # subtotal: 2 * 75 * 0.95 = 142.50
+        self.assertAlmostEqual(line['subtotal'], 142.50, places=2)
+        self.assertEqual(len(line['tax_details']), 1)
+        # tax: 142.50 * 0.05 = 7.125 → 7.13 (ROUND_HALF_UP)
+        self.assertAlmostEqual(line['tax_details'][0]['tax_amount'], 7.13, places=2)
+        self.assertAlmostEqual(snapshot['amount_total'], 149.63, places=2)
