@@ -2,7 +2,6 @@
 # Part of Odoo Subscription Management System.
 
 from odoo.addons.portal.controllers.portal import CustomerPortal
-from odoo.exceptions import ValidationError
 from odoo.http import request, route
 
 
@@ -103,49 +102,3 @@ class SubscriptionCustomerPortal(CustomerPortal):
             }
 
         return {'available': True}
-
-    # ── Password strength endpoint (Issue 02 — Layer 3) ──────────────────────
-    @route(
-        '/subscription/validate-password',
-        type='json',
-        auth='public',
-        methods=['POST'],
-        csrf=False,
-    )
-    def validate_password_strength(self, password=None, **kwargs):
-        """
-        JSON endpoint consumed by the portal registration form to give
-        real-time feedback on whether a candidate password meets all
-        server-side strength requirements (Issue 02).
-
-        This endpoint delegates entirely to ResUsers._check_password_strength()
-        so the same rules apply here as in _set_password().  The frontend
-        receives actionable error messages rather than a generic 'invalid'
-        notification.
-
-        Request body (JSON):
-            { "password": "candidate_password" }
-
-        Response (JSON) — valid password:
-            { "valid": true, "errors": [] }
-
-        Response (JSON) — weak password:
-            { "valid": false,
-              "errors": ["be more than 8 characters long (current length: 6)",
-                         "contain at least one uppercase letter (A-Z)"] }
-
-        Test case coverage:
-            TC-01  Fewer than 9 characters       → valid: false
-            TC-02  No uppercase letter            → valid: false
-            TC-03  No lowercase letter            → valid: false
-            TC-04  No special character           → valid: false
-            TC-05  All requirements satisfied     → valid: true
-        """
-        if not password or not isinstance(password, str):
-            return {
-                'valid': False,
-                'errors': ['A password is required to create an account.'],
-            }
-
-        result = request.env['res.users'].sudo().password_meets_requirements(password)
-        return result
