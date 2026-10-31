@@ -6,6 +6,13 @@ import re
 from odoo import api, fields, models, _
 from odoo.exceptions import ValidationError, AccessError
 
+# Groups that are NOT allowed to modify security group memberships on res.users.
+# Administrators (group_subscription_manager) are exempt — they manage accounts.
+_NON_ADMIN_GROUPS = (
+    'base.group_portal',
+    'subscription_base.group_subscription_user',
+)
+
 # ── Module-level compiled patterns (compiled once at import time) ─────────────
 # Compiling at module level avoids repeated re.compile() calls inside
 # constraint methods that fire on every record save.
@@ -95,6 +102,84 @@ class ResUsers(models.Model):
     ]
 
     # ── ORM-level constraint (Issue 01 — Layer 2) ─────────────────────────────
+    # ── Privilege escalation prevention (M1-03) ──────────────────────────────
+
+    def write(self, vals):
+        """
+        Override write() to prevent unauthorized group membership changes.
+
+        Threat — M1-03 (TC-06, TC-07):
+            A portal (Customer) or internal staff user could call:
+              self.env['res.users'].write({'groups_id': [(4, admin_group_id)]})
+            via JSON-RPC, Odoo shell, or a crafted RPC payload to escalate
+            their own privileges to Admin without going through the UI.
+
+        Covers TWO escalation surfaces:
+          1. 'groups_id' — standard Many2many write used by ORM and RPC callers.
+          2. 'sel_groups_*' — Odoo auto-generates Selection fields per module
+             category (e.g. sel_groups_1_10_11) displayed in the user form.
+             Writing these via the form or JSON-RPC is an equivalent privilege-
+             escalation path that checking 'groups_id' alone does not catch.
+
+        Admin users (group_subscription_manager / base.group_system) are
+        exempt and retain full write access to manage accounts.
+
+        Note: sudo() calls from within Odoo core (e.g. signup flow) operate
+        as the OdooBot / root user (env.su=True), so legitimate internal
+        calls are never blocked.
+        """
+        _group_fields = {'groups_id'}
+        group_field_written = bool(_group_fields.intersection(vals)) or any(
+            k.startswith('sel_groups_') for k in vals
+        )
+        if group_field_written:
+            self._check_no_self_escalation()
+        return super().write(vals)
+
+    @api.model
+    def _check_no_self_escalation(self):
+        """
+        Raise AccessError if the current user is a Customer or Staff member
+        attempting to modify group memberships on res.users.
+
+        Called from write() whenever 'groups_id' or 'sel_groups_*' appears
+        in the values dict.
+
+        Design:
+            - Admin (group_subscription_manager) — allowed.
+            - OdooBot / root (env.su == True) — allowed (bypasses before call).
+            - base.group_system — allowed.
+            - Internal Staff (group_subscription_user) — blocked.
+            - Customer (base.group_portal) — blocked.
+
+        Uses env.user.has_group() — the correct Odoo API for group checking.
+        has_group() reads from the pre-loaded user context and does NOT issue
+        an extra SQL query per call.  It also raises a clear ValueError if
+        the XML ID is invalid rather than silently passing.
+
+        Raises:
+            AccessError: Generic message — does not leak group names or
+            internal structure to the caller.
+        """
+        env = self.env
+        # Root / OdooBot / sudo bypass — legitimate internal operations
+        if env.su:
+            return
+        # Use has_group() — correct Odoo API, uses cached data, no raw SQL.
+        # If the subscription_base module is not installed (has_group raises
+        # ValueError), we fall through to the DENY path, which is safe.
+        is_admin = (
+            env.user.has_group('subscription_base.group_subscription_manager')
+            or env.user.has_group('base.group_system')
+        )
+        if is_admin:
+            return
+        # Non-admin attempting group write — reject
+        raise AccessError(_(
+            'You do not have permission to modify user roles or group memberships. '
+            'Contact your administrator.'
+        ))
+
     @api.constrains('login')
     def _check_unique_email(self):
         """

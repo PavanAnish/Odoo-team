@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+
+        <!--
+        ======================================================================
+        M1-03: Unauthorized Role Access — Security Groups
+        ======================================================================
+        Three roles exist in the system:
+
+        1. group_subscription_customer  (NEW)
+           Maps to base.group_portal.  Portal users who are subscription
+           customers.  Added here explicitly so ACLs and record rules can
+           reference a subscription-specific group rather than the generic
+           portal group, making the intent clear and auditable.
+
+        2. group_subscription_user  (EXISTING — Internal Staff)
+           Internal employees.  Implies base.group_user (internal user).
+
+        3. group_subscription_manager  (EXISTING — Administrator)
+           Full administrative access.  Implies group_subscription_user.
+
+        Privilege hierarchy (lowest → highest):
+            Customer → Staff → Admin
+
+        Design note:
+            We do NOT create a new base group for customers — we reuse
+            base.group_portal which Odoo already enforces at the session
+            authentication layer.  This subscription-specific group serves
+            as an audit-friendly alias and ACL anchor.
+        ======================================================================
+        -->
+
+        <!-- Root Module Category (already defined in subscription_base) -->
+
+        <!-- ── Customer Group (portal alias) ─────────────────────────────── -->
+        <record id="group_subscription_customer" model="res.groups">
+            <field name="name">Customer</field>
+            <field name="category_id" ref="subscription_base.module_category_subscription_management"/>
+            <field name="implied_ids" eval="[(4, ref('base.group_portal'))]"/>
+            <field name="comment">
+                Subscription customers with portal access.
+                Can view and manage only their own subscriptions and invoices.
+                Cannot access backend menus, administrative settings, or other
+                customers' records.
+            </field>
+        </record>
+
+    </data>
+</odoo>
