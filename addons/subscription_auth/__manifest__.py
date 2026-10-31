@@ -49,7 +49,9 @@ Four independent enforcement layers:
         'subscription_base',
     ],
     'data': [
+        'security/security_groups.xml',
         'security/ir.model.access.csv',
+        'security/security_rules.xml',
         'views/res_partner_views.xml',
     ],
     'demo': [],
