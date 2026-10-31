@@ -1,10 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
+    <!-- Extended Product Template Form View -->
     <record id="product_template_form_view_inherit_subscription" model="ir.ui.view">
         <field name="name">product.template.form.inherit.subscription</field>
         <field name="model">product.template</field>
         <field name="inherit_id" ref="product.product_template_form_view"/>
         <field name="arch" type="xml">
+            <xpath expr="//header" position="inside">
+                <button name="action_archive_product" string="Archive" type="object"
+                        class="btn-secondary" invisible="not active"/>
+                <button name="action_unarchive_product" string="Unarchive" type="object"
+                        class="btn-secondary" invisible="active"/>
+            </xpath>
             <xpath expr="//div[@name='options']" position="inside">
                 <span class="d-inline-block">
                     <field name="is_subscription_product"/>
@@ -21,11 +28,56 @@
         </field>
     </record>
 
+    <!-- Dedicated Subscription Product Tree View -->
+    <record id="view_product_template_tree_subscription" model="ir.ui.view">
+        <field name="name">product.template.tree.subscription</field>
+        <field name="model">product.template</field>
+        <field name="arch" type="xml">
+            <tree string="Subscription Products" sample="1">
+                <field name="default_code" string="SKU / Code"/>
+                <field name="name" string="Product Name"/>
+                <field name="detailed_type" string="Type"/>
+                <field name="list_price" string="Sales Price" widget="monetary"/>
+                <field name="standard_price" string="Cost Price" widget="monetary"
+                       groups="subscription_base.group_subscription_manager"/>
+                <field name="subscription_plan_id" optional="show"/>
+                <field name="active" widget="boolean_toggle"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Subscription Products Search View -->
+    <record id="view_product_template_search_subscription" model="ir.ui.view">
+        <field name="name">product.template.search.subscription</field>
+        <field name="model">product.template</field>
+        <field name="arch" type="xml">
+            <search string="Search Products">
+                <field name="name" string="Product" filter_domain="['|', ('name', 'ilike', self), ('default_code', 'ilike', self)]"/>
+                <field name="default_code"/>
+                <separator/>
+                <filter string="Services" name="filter_services" domain="[('detailed_type', '=', 'service')]"/>
+                <filter string="Consumables" name="filter_consumables" domain="[('detailed_type', '=', 'consu')]"/>
+                <separator/>
+                <filter string="Archived" name="filter_inactive" domain="[('active', '=', False)]"/>
+                <group expand="0" string="Group By">
+                    <filter string="Type" name="group_by_type" context="{'group_by': 'detailed_type'}"/>
+                    <filter string="Plan" name="group_by_plan" context="{'group_by': 'subscription_plan_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
     <!-- Subscriptions Products Action and Menu -->
     <record id="action_subscription_products" model="ir.actions.act_window">
         <field name="name">Subscription Products</field>
         <field name="res_model">product.template</field>
-        <field name="view_mode">kanban,tree,form</field>
+        <field name="view_mode">tree,kanban,form</field>
+        <field name="search_view_id" ref="view_product_template_search_subscription"/>
+        <field name="view_ids" eval="[(5, 0, 0),
+            (0, 0, {'view_mode': 'tree', 'view_id': ref('view_product_template_tree_subscription')}),
+            (0, 0, {'view_mode': 'kanban', 'view_id': ref('product.product_template_kanban_view')}),
+            (0, 0, {'view_mode': 'form', 'view_id': ref('product.product_template_form_view')})
+        ]"/>
         <field name="domain">[('is_subscription_product', '=', True)]</field>
         <field name="context">{'default_is_subscription_product': True}</field>
     </record>

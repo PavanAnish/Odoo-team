@@ -2,3 +2,4 @@
 # Part of Odoo Subscription Management System.
 
 from . import test_catalog
+from . import test_product
