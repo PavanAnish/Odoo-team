@@ -1,0 +1,5 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_subscription_template_item_user,subscription.template.item.user,model_subscription_template_item,group_subscription_template_user,1,1,1,0
+access_subscription_template_item_manager,subscription.template.item.manager,model_subscription_template_item,group_subscription_template_manager,1,1,1,1
+access_subscription_template_wizard_user,subscription.template.wizard.user,model_subscription_template_wizard,group_subscription_template_user,1,1,1,1
+

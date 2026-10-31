@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- QWeb PDF Report Action -->
+    <record id="action_report_subscription_template_item" model="ir.actions.report">
+        <field name="name">Template Item Summary</field>
+        <field name="model">subscription.template.item</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">subscription_module_template.report_template_item_document</field>
+        <field name="report_file">subscription_module_template.report_template_item_document</field>
+        <field name="print_report_name">'Template - %s' % (object.name)</field>
+        <field name="binding_model_id" ref="model_subscription_template_item"/>
+        <field name="binding_type">report</field>
+    </record>
+
+    <!-- QWeb Template Document Definition -->
+    <template id="report_template_item_document">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="doc">
+                <t t-call="web.external_layout">
+                    <div class="page">
+                        <h2>Template Item: <span t-field="doc.name"/></h2>
+                        <div class="row mt-4">
+                            <div class="col-6">
+                                <strong>Code:</strong> <span t-field="doc.code"/><br/>
+                                <strong>Status:</strong> <span t-field="doc.state"/>
+                            </div>
+                            <div class="col-6">
+                                <strong>Company:</strong> <span t-field="doc.company_id.name"/><br/>
+                                <strong>Created On:</strong> <span t-field="doc.create_date"/>
+                            </div>
+                        </div>
+                        <div class="mt-4" t-if="doc.description">
+                            <h4>Description</h4>
+                            <p t-field="doc.description"/>
+                        </div>
+                    </div>
+                </t>
+            </t>
+        </t>
+    </template>
+</odoo>

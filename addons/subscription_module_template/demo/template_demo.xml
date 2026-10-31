@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- Demonstration records loaded only with demo data enabled -->
+        <record id="demo_template_item_enterprise" model="subscription.template.item">
+            <field name="name">Enterprise Tier Template</field>
+            <field name="code">TMPL-DEMO-ENT</field>
+            <field name="description">Demo item for high-volume enterprise subscription testing.</field>
+            <field name="state">confirmed</field>
+        </record>
+
+        <record id="demo_template_item_starter" model="subscription.template.item">
+            <field name="name">Starter Tier Template</field>
+            <field name="code">TMPL-DEMO-START</field>
+            <field name="description">Demo item for starter subscription tier evaluation.</field>
+            <field name="state">draft</field>
+        </record>
+    </data>
+</odoo>

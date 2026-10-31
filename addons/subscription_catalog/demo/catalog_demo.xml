@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <record id="demo_plan_monthly" model="subscription.plan">
+            <field name="name">Monthly Standard Plan</field>
+            <field name="code">PLAN-MONTHLY-STD</field>
+            <field name="billing_interval">1</field>
+            <field name="billing_period">monthly</field>
+            <field name="trial_period_days">14</field>
+        </record>
+
+        <record id="demo_plan_annual" model="subscription.plan">
+            <field name="name">Annual Enterprise Plan</field>
+            <field name="code">PLAN-ANNUAL-ENT</field>
+            <field name="billing_interval">1</field>
+            <field name="billing_period">yearly</field>
+            <field name="trial_period_days">30</field>
+        </record>
+    </data>
+</odoo>
