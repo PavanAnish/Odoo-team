@@ -10,14 +10,17 @@
     'description': """
 Subscription Management (Module 3)
 ==================================
-Manages quotation workflows, customer acceptance, recurring subscription contracts,
-and lifecycle state machine (Draft -> Quotation -> Confirmed -> Active -> Paused -> Closed).
+Manages quotation creation, product and variant selection, pricing engine,
+tax calculations, discount application, and quotation lifecycle:
+(Draft -> Quotation Sent -> Confirmed -> Active Subscription).
     """,
     'author': 'Hackathon Team',
     'website': 'https://github.com/PavanAnish',
     'license': 'LGPL-3',
     'depends': [
         'base',
+        'product',
+        'account',
         'subscription_base',
         'subscription_auth',
         'subscription_catalog',
@@ -25,6 +28,7 @@ and lifecycle state machine (Draft -> Quotation -> Confirmed -> Active -> Paused
     'data': [
         'security/security_rules.xml',
         'security/ir.model.access.csv',
+        'data/ir_sequence_data.xml',
         'views/subscription_views.xml',
     ],
     'demo': [

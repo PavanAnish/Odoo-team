@@ -2,3 +2,4 @@
 # Part of Odoo Subscription Management System.
 
 from . import test_subscription
+from . import test_quotation
