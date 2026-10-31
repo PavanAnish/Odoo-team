@@ -67,8 +67,10 @@ export const convertQuotation = (qid) =>
 export const fetchInvoices = (search = '', state = '', limit = 50, offset = 0) =>
   rpc('/admin/api/invoices', { search, state, limit, offset });
 
-export const invoiceAction = (iid, action, amount = null, method = null) =>
-  rpc(`/admin/api/invoice/${iid}/action`, { action, amount, method });
+export const invoiceAction = (iid, action, amount = null, method = null, extra = {}) =>
+  rpc(`/admin/api/invoice/${iid}/action`, { action, amount, method, ...extra });
+
+export const getInvoicePdfUrl = (iid) => `/admin/api/invoice/${iid}/pdf`;
 
 export const runBilling = () => rpc('/admin/api/billing/run');
 

@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- QWeb PDF Report Action for Invoices -->
+    <record id="action_report_subscription_invoice" model="ir.actions.report">
+        <field name="name">Subscription Invoice</field>
+        <field name="model">account.move</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">subscription_billing.report_invoice_document</field>
+        <field name="report_file">subscription_billing.report_invoice_document</field>
+        <field name="print_report_name">'Invoice - %s' % (object.name)</field>
+        <field name="binding_type">report</field>
+    </record>
+
+    <!-- QWeb Template Document Definition -->
+    <template id="report_invoice_document">
+        <t t-call="web.html_container">
+            <t t-foreach="docs" t-as="o">
+                <t t-call="web.external_layout">
+                    <div class="page" style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #1e293b;">
+                        <!-- Header: Title and Status -->
+                        <div class="row mb-4">
+                            <div class="col-7">
+                                <h2 style="font-weight: 700; color: #0f172a;">TAX INVOICE</h2>
+                                <h4 style="color: #64748b;">
+                                    <span t-field="o.name"/>
+                                </h4>
+                            </div>
+                            <div class="col-5 text-end">
+                                <span class="badge" style="font-size: 14px; padding: 6px 12px; background-color: #0f172a; color: #fff;">
+                                    <span t-field="o.invoice_status"/>
+                                </span>
+                                <div class="mt-2" style="font-size: 13px;">
+                                    <strong>Invoice Date:</strong> <span t-field="o.invoice_date"/><br/>
+                                    <strong>Due Date:</strong> <span t-field="o.invoice_date_due"/>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Customer Details (Bill To) & Payment Terms -->
+                        <div class="row mb-4" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px;">
+                            <div class="col-6">
+                                <h6 style="font-weight: 700; text-transform: uppercase; color: #475569; font-size: 11px;">Bill To:</h6>
+                                <h5 style="margin-bottom: 4px; font-weight: 600;"><span t-field="o.partner_id.name"/></h5>
+                                <div style="font-size: 13px; color: #334155; line-height: 1.4;">
+                                    <span t-if="o.partner_id.street" t-field="o.partner_id.street"/><br t-if="o.partner_id.street"/>
+                                    <span t-if="o.partner_id.city" t-field="o.partner_id.city"/>
+                                    <span t-if="o.partner_id.zip" t-field="o.partner_id.zip"/>
+                                    <span t-if="o.partner_id.country_id" t-field="o.partner_id.country_id.name"/><br t-if="o.partner_id.city or o.partner_id.country_id"/>
+                                    <span t-if="o.partner_id.email"><strong>Email:</strong> <span t-field="o.partner_id.email"/></span><br t-if="o.partner_id.email"/>
+                                    <span t-if="o.partner_id.phone"><strong>Phone:</strong> <span t-field="o.partner_id.phone"/></span>
+                                    <span t-if="o.partner_id.vat"><br/><strong>Tax ID / VAT:</strong> <span t-field="o.partner_id.vat"/></span>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <h6 style="font-weight: 700; text-transform: uppercase; color: #475569; font-size: 11px;">Payment &amp; Subscription Terms:</h6>
+                                <div style="font-size: 13px; color: #334155; line-height: 1.4;">
+                                    <strong>Origin Reference:</strong> <span t-field="o.invoice_origin"/><br/>
+                                    <strong>Payment Due Date:</strong> <span t-field="o.invoice_date_due"/><br/>
+                                    <strong>Payment Status:</strong> <span t-field="o.payment_state"/><br/>
+                                    <strong>Accepted Methods:</strong> Bank Transfer, Card, Direct Debit<br/>
+                                    <strong>Bank Name:</strong> First Commercial Global Bank<br/>
+                                    <strong>Account #:</strong> 1029-3847-5610-88
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Line Items Table -->
+                        <h6 style="font-weight: 700; text-transform: uppercase; color: #0f172a; font-size: 12px; margin-top: 16px; margin-bottom: 8px;">Product Descriptions &amp; Quantities</h6>
+                        <table class="table table-sm table-striped" style="font-size: 13px; border: 1px solid #e2e8f0;">
+                            <thead style="background-color: #0f172a; color: #ffffff;">
+                                <tr>
+                                    <th style="padding: 8px;">Description</th>
+                                    <th class="text-end" style="padding: 8px;">Quantity</th>
+                                    <th class="text-end" style="padding: 8px;">Unit Price</th>
+                                    <th class="text-end" style="padding: 8px;">Discount</th>
+                                    <th class="text-end" style="padding: 8px;">Taxes</th>
+                                    <th class="text-end" style="padding: 8px;">Subtotal</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <t t-foreach="o.invoice_line_ids" t-as="line">
+                                    <tr>
+                                        <td style="padding: 8px;"><span t-field="line.name"/></td>
+                                        <td class="text-end" style="padding: 8px;"><span t-field="line.quantity"/></td>
+                                        <td class="text-end" style="padding: 8px;"><span t-field="line.price_unit"/></td>
+                                        <td class="text-end" style="padding: 8px;"><span t-field="line.discount"/>%</td>
+                                        <td class="text-end" style="padding: 8px;">18%</td>
+                                        <td class="text-end" style="padding: 8px; font-weight: 600;"><span t-field="line.price_subtotal"/></td>
+                                    </tr>
+                                </t>
+                            </tbody>
+                        </table>
+
+                        <!-- Totals Breakdown -->
+                        <div class="row justify-content-end mt-3">
+                            <div class="col-5">
+                                <table class="table table-sm" style="font-size: 13px;">
+                                    <tr>
+                                        <td><strong>Subtotal (Untaxed):</strong></td>
+                                        <td class="text-end"><span t-field="o.amount_untaxed"/></td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Applicable Taxes (18%):</strong></td>
+                                        <td class="text-end"><span t-field="o.amount_tax"/></td>
+                                    </tr>
+                                    <tr style="border-top: 2px solid #0f172a; background-color: #f1f5f9;">
+                                        <td style="font-size: 15px;"><strong>Final Invoice Total:</strong></td>
+                                        <td class="text-end" style="font-size: 15px; font-weight: 700;"><span t-field="o.amount_total"/></td>
+                                    </tr>
+                                    <tr style="color: #047857;">
+                                        <td><strong>Total Paid to Date:</strong></td>
+                                        <td class="text-end"><span t-field="o.amount_paid"/></td>
+                                    </tr>
+                                    <tr style="border-top: 1px solid #dc2626; background-color: #fef2f2; color: #dc2626;">
+                                        <td style="font-size: 15px;"><strong>Remaining Balance Due:</strong></td>
+                                        <td class="text-end" style="font-size: 15px; font-weight: 700;"><span t-field="o.amount_residual"/></td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Recorded Payments (if any) -->
+                        <t t-if="o.payment_ids">
+                            <h6 style="font-weight: 700; text-transform: uppercase; color: #0f172a; font-size: 12px; margin-top: 20px; margin-bottom: 8px;">Recorded Payment Receipts</h6>
+                            <table class="table table-sm" style="font-size: 12px; border: 1px solid #e2e8f0;">
+                                <thead style="background-color: #f1f5f9;">
+                                    <tr>
+                                        <th>Payment #</th>
+                                        <th>Date</th>
+                                        <th>Method</th>
+                                        <th>Reference</th>
+                                        <th class="text-end">Amount Paid</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <t t-foreach="o.payment_ids" t-as="p">
+                                        <tr>
+                                            <td><b><span t-field="p.name"/></b></td>
+                                            <td><span t-field="p.payment_date"/></td>
+                                            <td><span t-field="p.payment_method"/></td>
+                                            <td><span t-field="p.payment_reference"/></td>
+                                            <td class="text-end" style="font-weight: 600; color: #047857;"><span t-field="p.amount"/></td>
+                                        </tr>
+                                    </t>
+                                </tbody>
+                            </table>
+                        </t>
+
+                        <!-- Footer -->
+                        <div class="mt-4 pt-3 text-center" style="border-top: 1px solid #e2e8f0; font-size: 11px; color: #64748b;">
+                            Thank you for your business! Please settle payments before the due date (<span t-field="o.invoice_date_due"/>).<br/>
+                            For questions, contact our billing department at billing@odoo-subscription.com.
+                        </div>
+                    </div>
+                </t>
+            </t>
+        </t>
+    </template>
+</odoo>

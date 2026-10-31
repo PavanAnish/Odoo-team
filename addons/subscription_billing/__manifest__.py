@@ -26,6 +26,7 @@ recurring invoice generation from active subscriptions, payment matching, and ba
         'security/ir.model.access.csv',
         'data/ir_sequence_data.xml',
         'data/ir_cron_data.xml',
+        'report/account_move_report.xml',
         'views/account_move_views.xml',
     ],
     'demo': [],

@@ -5,6 +5,7 @@ import logging
 from datetime import date, datetime
 from odoo import api, fields, models, _
 from odoo.exceptions import ValidationError, UserError, AccessError
+from .invoice_pdf_generator import InvoicePDFGenerator
 
 _logger = logging.getLogger(__name__)
 
@@ -105,6 +106,30 @@ class AccountMove(models.Model):
         copy=False,
         readonly=True,
         help='Timestamp when the invoice was sent to the customer.'
+    )
+    invoice_recipient_email = fields.Char(
+        string='Recipient Email',
+        copy=False,
+        readonly=True,
+        help='Email address where the invoice was dispatched.'
+    )
+    invoice_delivery_status = fields.Selection(
+        selection=[
+            ('not_sent', 'Not Sent'),
+            ('sent', 'Delivered'),
+            ('failed', 'Delivery Failed'),
+        ],
+        string='Delivery Status',
+        default='not_sent',
+        copy=False,
+        readonly=True,
+        help='Invoice delivery status.'
+    )
+    invoice_delivery_error = fields.Text(
+        string='Delivery Error',
+        copy=False,
+        readonly=True,
+        help='Reason for delivery failure if invoice sending failed.'
     )
 
     # --- Payment Tracking & Balances ---
@@ -668,7 +693,48 @@ class AccountMove(models.Model):
             action['res_id'] = payments.id
         return action
 
-    def action_send_invoice(self):
+    def generate_invoice_pdf(self):
+        """Generate and return professional PDF binary data for this invoice."""
+        self.ensure_one()
+        return InvoicePDFGenerator.generate_pdf(self)
+
+    def get_invoice_pdf_data(self):
+        """Extract standardized dictionary of all invoice data for reporting/API."""
+        self.ensure_one()
+        return InvoicePDFGenerator.extract_invoice_data(self)
+
+    def validate_invoice_completeness(self):
+        """Validate invoice data integrity: customer details, product lines, quantities, and totals.
+        Returns a list of validation error messages (empty if valid).
+        """
+        self.ensure_one()
+        errors = []
+        if not self.partner_id:
+            errors.append(_("Missing customer information: No partner assigned."))
+        elif not (getattr(self.partner_id, 'name', '') or getattr(self.partner_id, 'display_name', '')):
+            errors.append(_("Missing customer information: Customer has no name."))
+
+        lines = self.invoice_line_ids or self.line_ids
+        if not lines:
+            errors.append(_("Missing product information: Invoice contains no line items."))
+        else:
+            for idx, line in enumerate(lines, 1):
+                qty = getattr(line, 'quantity', 0.0)
+                if qty <= 0:
+                    errors.append(_("Line #%d has invalid quantity (%s). Quantity must be greater than zero.") % (idx, qty))
+                desc = getattr(line, 'name', '') or getattr(getattr(line, 'product_id', None), 'name', '')
+                if not desc:
+                    errors.append(_("Line #%d has missing product description.") % idx)
+
+        if self.amount_total < 0:
+            errors.append(_("Invoice total amount cannot be negative (%s).") % self.amount_total)
+
+        if not self.invoice_date_due:
+            errors.append(_("Missing payment due date."))
+
+        return errors
+
+    def action_send_invoice(self, recipient_email=None, subject=None, body=None):
         """Send invoice to customer: available only for valid states (Confirmed, Paid)."""
         for move in self:
             if move.invoice_status == 'draft':
@@ -682,22 +748,48 @@ class AccountMove(models.Model):
                     "Cannot send cancelled invoice '%s'."
                 ) % (move.name or move.id))
 
-            if not move.partner_id or not move.partner_id.email:
+            email_to = (recipient_email or (move.partner_id.email if move.partner_id else '') or '').strip()
+            if not email_to or '@' not in email_to:
                 customer_name = move.partner_id.name if move.partner_id else _('Unassigned')
+                move.write({
+                    'invoice_delivery_status': 'failed',
+                    'invoice_delivery_error': _("Customer '%s' does not have a valid email address.") % customer_name,
+                    '_skip_history_log': True,
+                })
                 raise ValidationError(_(
                     "Cannot send invoice '%s': Customer '%s' does not have a valid email address."
                 ) % (move.name or move.id, customer_name))
 
+            # Generate PDF attachment to ensure PDF generation works without error
+            try:
+                pdf_content = move.generate_invoice_pdf()
+            except Exception as e:
+                move.write({
+                    'invoice_delivery_status': 'failed',
+                    'invoice_delivery_error': _("PDF generation failed: %s") % str(e),
+                    '_skip_history_log': True,
+                })
+                raise ValidationError(_("Failed to generate invoice PDF for '%s': %s") % (move.name or move.id, str(e)))
+
             move.write({
                 'invoice_sent': True,
                 'invoice_sent_date': fields.Datetime.now(),
+                'invoice_recipient_email': email_to,
+                'invoice_delivery_status': 'sent',
+                'invoice_delivery_error': False,
                 '_skip_history_log': True,
             })
+            log_detail = _("Invoice sent to customer %s (%s). PDF attached.") % (
+                move.partner_id.name if move.partner_id else _('Customer'),
+                email_to
+            )
+            if subject:
+                log_detail += f" Subject: {subject}"
             move._log_history(
                 action='send',
                 previous_status=move.invoice_status,
                 current_status=move.invoice_status,
-                details=_("Invoice sent to customer %s (%s).") % (move.partner_id.name, move.partner_id.email)
+                details=log_detail
             )
         return True
 
@@ -735,7 +827,7 @@ class AccountMove(models.Model):
             )
         return {
             'type': 'ir.actions.act_url',
-            'url': f'/web/content/account.move/{self.id}/pdf',
+            'url': f'/admin/api/invoice/{self.id}/pdf',
             'target': 'self',
         }
 

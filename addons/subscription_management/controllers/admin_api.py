@@ -425,8 +425,34 @@ class AdminDashboardController(http.Controller):
             _logger.error("Invoices API error: %s", e)
             return _err(e)
 
+    @http.route('/admin/api/invoice/<int:iid>/pdf', type='http', auth='user', methods=['GET', 'POST'], csrf=False)
+    def invoice_pdf(self, iid, **kw):
+        try:
+            inv = request.env['account.move'].sudo().browse(iid)
+            if not inv.exists():
+                return request.not_found()
+            if inv.state == 'cancel' or (hasattr(inv, 'invoice_status') and inv.invoice_status == 'cancel'):
+                return request.make_response(
+                    "Cancelled invoices cannot be downloaded as PDF.",
+                    headers=[('Content-Type', 'text/plain')],
+                    status=400
+                )
+            pdf_data = inv.generate_invoice_pdf()
+            filename = f"Invoice_{inv.name or iid}.pdf".replace('/', '_')
+            return request.make_response(
+                pdf_data,
+                headers=[
+                    ('Content-Type', 'application/pdf'),
+                    ('Content-Disposition', f'attachment; filename="{filename}"'),
+                    ('Content-Length', str(len(pdf_data))),
+                ]
+            )
+        except Exception as e:
+            _logger.error("Invoice PDF download error: %s", e)
+            return request.make_response(f"Error generating invoice PDF: {e}", status=500)
+
     @http.route('/admin/api/invoice/<int:iid>/action', type='json', auth='user', methods=['POST'], csrf=False)
-    def invoice_action(self, iid, action, amount=None, method=None):
+    def invoice_action(self, iid, action, amount=None, method=None, recipient=None, subject=None, message=None):
         try:
             _require_admin()
             inv = request.env['account.move'].sudo().browse(iid)
@@ -438,6 +464,15 @@ class AdminDashboardController(http.Controller):
                 inv.action_post()
             elif action == 'cancel':
                 inv.button_cancel()
+            elif action == 'send':
+                inv.action_send_invoice(recipient_email=recipient, subject=subject, body=message)
+                return {'ok': True, 'invoice_sent': True, 'state': inv.state}
+            elif action == 'download':
+                inv.action_download_invoice()
+                return {'ok': True, 'download_url': f'/admin/api/invoice/{iid}/pdf'}
+            elif action == 'print':
+                inv.action_print_invoice()
+                return {'ok': True}
             elif action == 'pay':
                 if not amount:
                     return _err('Payment amount required')
