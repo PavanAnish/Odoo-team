@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="res_config_settings_view_form" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.inherit.subscription</field>
+        <field name="model">res.config.settings</field>
+        <field name="priority" eval="70"/>
+        <field name="inherit_id" ref="base.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//form" position="inside">
+                <app data-string="Subscriptions" string="Subscriptions" name="subscription_base" groups="subscription_base.group_subscription_manager">
+                    <block title="Subscription Automation Settings">
+                        <setting id="subscription_auto_invoice_setting" help="Generate invoices automatically based on recurring billing dates.">
+                            <field name="subscription_auto_invoice"/>
+                        </setting>
+                        <setting id="subscription_grace_period_setting" help="Overdue tolerance window before subscription state transition.">
+                            <field name="subscription_grace_period_days"/>
+                        </setting>
+                    </block>
+                </app>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="action_subscription_config_settings" model="ir.actions.act_window">
+        <field name="name">Settings</field>
+        <field name="res_model">res.config.settings</field>
+        <field name="view_mode">form</field>
+        <field name="target">inline</field>
+        <field name="context">{'module' : 'subscription_base', 'bin_size': False}</field>
+    </record>
+
+    <menuitem id="menu_subscription_general_settings"
+              name="Settings"
+              parent="menu_subscription_configuration_menu"
+              sequence="0"
+              action="action_subscription_config_settings"
+              groups="group_subscription_manager"/>
+</odoo>
