@@ -26,6 +26,7 @@
                 <field name="date_subscription_end" string="Sub. Expiry Date" optional="show"/>
                 <field name="date_last_renewal" string="Last Renewed" optional="show"/>
                 <field name="renewal_count" string="Renewals" optional="show"/>
+                <field name="date_auto_closed" string="Auto-Closed On" optional="show"/>
                 <field name="payment_term_id" string="Payment Terms" optional="hide"/>
                 <field name="quotation_id" string="Original Quotation" optional="hide"/>
                 <field name="expiration_status" widget="badge"
@@ -186,6 +187,7 @@
                             <field name="date_resumed" readonly="1" invisible="not date_resumed"/>
                             <field name="date_closed_early" readonly="1" invisible="not date_closed_early"/>
                             <field name="early_closure_reason" readonly="1" invisible="not early_closure_reason"/>
+                            <field name="date_auto_closed" readonly="1" invisible="not date_auto_closed"/>
                         </group>
                     </group>
 
@@ -316,6 +318,8 @@
                         domain="[('state', '=', 'active'), ('date_subscription_end', '&lt;=', (context_today() + datetime.timedelta(days=30)).strftime('%Y-%m-%d'))]"/>
                 <filter string="Renewed" name="filter_renewed" domain="[('renewal_count', '&gt;', 0)]"/>
                 <filter string="Auto-Renewal Enabled" name="filter_auto_renewal" domain="[('plan_id.auto_renewal', '=', True)]"/>
+                <filter string="Auto-Closure Enabled" name="filter_auto_closure" domain="[('plan_id.auto_closure', '=', True)]"/>
+                <filter string="Auto-Closed" name="filter_auto_closed" domain="[('date_auto_closed', '!=', False)]"/>
                 <filter string="Closed Subscriptions" name="filter_closed" domain="[('state', '=', 'closed')]"/>
                 <separator/>
                 <filter string="Expired Quotations" name="filter_expired"

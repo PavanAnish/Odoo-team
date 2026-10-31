@@ -164,6 +164,8 @@ class SubscriptionSubscription(models.Model):
         help='Timestamp when the subscription was last resumed.')
     date_closed_early = fields.Date(string='Early Closure Date', readonly=True, copy=False,
         help='Date on which an early closure was enacted.')
+    date_auto_closed = fields.Datetime(string='Auto-Closure Date', readonly=True, copy=False,
+        help='Timestamp when this subscription was automatically closed by the expiration scheduler.')
     pause_reason = fields.Text(string='Pause Reason', readonly=True, copy=False,
         help='Reason provided when the subscription was paused.')
     early_closure_reason = fields.Text(string='Early Closure Reason', readonly=True, copy=False,
@@ -798,6 +800,85 @@ class SubscriptionSubscription(models.Model):
                     'renewal_date': fields.Datetime.now(),
                     'notes': str(exc),
                 })
+                self.env.cr.rollback()
+
+    @api.model
+    def _cron_process_subscription_expiration(self):
+        """Scheduled Action: evaluate expired subscriptions — renew or auto-close.
+
+        Processing order per subscription:
+          1. Skip already-closed records.
+          2. If plan allows auto-renewal → attempt _do_renewal(). Keep active on success.
+          3. On renewal failure (or auto-renewal disabled) → check plan.auto_closure.
+          4. If auto_closure enabled and subscription has expired → close via action_close().
+          5. Record history; log failures without leaving partial state.
+        """
+        today = fields.Date.context_today(self)
+        # Find active/paused subscriptions whose subscription end date has been reached
+        expired_subs = self.search([
+            ('state', 'in', ('active', 'paused')),
+            ('date_subscription_end', '!=', False),
+            ('date_subscription_end', '<=', today),
+        ])
+        _logger.info(
+            "Expiration cron: %d subscription(s) at or past expiry date.", len(expired_subs)
+        )
+        for sub in expired_subs:
+            try:
+                renewed = False
+                # --- Step 1: attempt auto-renewal if plan permits ---
+                if sub.plan_id.allow_renewal and sub.plan_id.auto_renewal:
+                    dup_guard = (
+                        sub.last_renewal_period_end
+                        and sub.last_renewal_period_end >= (sub.date_subscription_end or today)
+                    )
+                    if not dup_guard:
+                        try:
+                            sub.sudo()._do_renewal(renewal_type='automatic')
+                            renewed = True
+                            _logger.info(
+                                "Expiration cron: subscription '%s' (id=%d) auto-renewed.",
+                                sub.name, sub.id,
+                            )
+                        except Exception as renew_exc:
+                            _logger.warning(
+                                "Expiration cron: renewal failed for '%s' (id=%d): %s — "
+                                "proceeding to closure evaluation.",
+                                sub.name, sub.id, renew_exc,
+                            )
+                            # Record failed renewal attempt
+                            self.env['subscription.renewal.history'].sudo().create({
+                                'subscription_id': sub.id,
+                                'plan_id': sub.plan_id.id,
+                                'renewal_type': 'automatic',
+                                'renewal_result': 'failed',
+                                'user_id': self.env.uid,
+                                'renewal_date': fields.Datetime.now(),
+                                'notes': str(renew_exc),
+                            })
+
+                # --- Step 2: close if not renewed and auto_closure is on ---
+                if not renewed and sub.plan_id.auto_closure and sub.state != 'closed':
+                    now = fields.Datetime.now()
+                    reason = _("Automatic expiration: subscription reached its scheduled end date (%s).") % sub.date_subscription_end
+                    ctx = dict(self.env.context, transition_reason=reason)
+                    sub.with_context(ctx).write({
+                        'state': 'closed',
+                        'next_billing_date': False,
+                        'date_auto_closed': now,
+                    })
+                    sub.message_post(body=reason)
+                    # The write() override already records status history.
+                    _logger.info(
+                        "Expiration cron: subscription '%s' (id=%d) auto-closed.",
+                        sub.name, sub.id,
+                    )
+            except Exception as exc:
+                _logger.error(
+                    "Expiration cron: unhandled error for subscription '%s' (id=%d): %s",
+                    sub.name, sub.id, exc,
+                )
+                # Rollback this record's changes; continue with the next
                 self.env.cr.rollback()
 
     def action_pause(self, reason=None):

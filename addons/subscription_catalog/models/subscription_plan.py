@@ -77,6 +77,11 @@ class SubscriptionPlan(models.Model):
         default=False,
         help='If enabled, eligible subscriptions are renewed automatically by a scheduled job.',
     )
+    auto_closure = fields.Boolean(
+        string='Automatic Closure on Expiry',
+        default=True,
+        help='If enabled, subscriptions that reach their expiry date are automatically closed by the scheduled job (unless successfully renewed).',
+    )
 
     # --- Pause & Early Closure Settings ---
     allow_pause = fields.Boolean(

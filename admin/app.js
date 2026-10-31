@@ -1,7 +1,7 @@
 import {
   $, M, TODAY, BC, B, IC, NAV, slug, D, S, ds, dO,
   toast, modal, X, confirmD, form, del, tog, crud,
-  currentUser, logInvoiceHistory
+  currentUser, logInvoiceHistory, loadData
 } from './shared/store.js';
 
 import { dash } from './dashboard/dashboard.js';
@@ -147,5 +147,5 @@ window.addEventListener('keydown', e => {
   }
 });
 
-// Initial boot
-go();
+// Initial boot — load real backend data then render
+loadData().then(() => go()).catch(() => go());
