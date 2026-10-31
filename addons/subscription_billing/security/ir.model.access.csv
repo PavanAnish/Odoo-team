@@ -2,3 +2,6 @@ id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_account_move_history_user,account.move.history.user,model_account_move_history,subscription_base.group_subscription_user,1,0,1,0
 access_account_move_history_manager,account.move.history.manager,model_account_move_history,subscription_base.group_subscription_manager,1,1,1,1
 access_account_move_history_customer,account.move.history.customer,model_account_move_history,subscription_auth.group_subscription_customer,1,0,0,0
+access_account_payment_user,account.payment.user,model_account_payment,subscription_base.group_subscription_user,1,1,1,0
+access_account_payment_manager,account.payment.manager,model_account_payment,subscription_base.group_subscription_manager,1,1,1,1
+access_account_payment_customer,account.payment.customer,model_account_payment,subscription_auth.group_subscription_customer,1,0,0,0
