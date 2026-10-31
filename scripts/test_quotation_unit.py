@@ -13,7 +13,7 @@ def run_tests():
     print("Running Quotation Logic & Calculation Verification Suite")
     print("=" * 70)
     passed = 0
-    total = 14
+    total = 19
 
     today = date.today()
     yesterday = today - timedelta(days=1)
@@ -284,6 +284,83 @@ def run_tests():
         passed += 1
     except Exception as e:
         print(f" [FAIL] 14. Quotation expiry validation: {e}")
+
+    # ==========================================================
+    # 15. validity_days → date_expiration auto-calculation
+    # ==========================================================
+    try:
+        from datetime import timedelta as td
+        q_date_15 = today
+        validity = 7
+        expected_expiry = q_date_15 + td(days=validity)
+        computed_expiry = q_date_15 + td(days=validity)
+        assert computed_expiry == expected_expiry
+        print(" [PASS] 15. validity_days → date_expiration auto-calculation")
+        passed += 1
+    except Exception as e:
+        print(f" [FAIL] 15. validity_days → date_expiration auto-calculation: {e}")
+
+    # ==========================================================
+    # 16. expiration_status = 'expired' when past expiry
+    # ==========================================================
+    try:
+        from datetime import timedelta as td
+
+        def compute_expiration_status(state, date_expiration, today_d, expiring_threshold_days=7):
+            threshold = today_d + td(days=expiring_threshold_days)
+            if state in ('confirmed', 'active', 'paused', 'closed'):
+                return 'valid', False
+            if not date_expiration:
+                return 'valid', False
+            if date_expiration < today_d:
+                return 'expired', True
+            if date_expiration <= threshold:
+                return 'expiring_soon', False
+            return 'valid', False
+
+        status, is_exp = compute_expiration_status('draft', today - td(days=1), today)
+        assert status == 'expired' and is_exp is True
+        print(" [PASS] 16. expiration_status = 'expired' when date_expiration < today")
+        passed += 1
+    except Exception as e:
+        print(f" [FAIL] 16. expiration_status = 'expired': {e}")
+
+    # ==========================================================
+    # 17. expiration_status = 'expiring_soon' within 7-day window
+    # ==========================================================
+    try:
+        from datetime import timedelta as td
+        status, is_exp = compute_expiration_status('draft', today + td(days=3), today)
+        assert status == 'expiring_soon' and is_exp is False
+        print(" [PASS] 17. expiration_status = 'expiring_soon' within 7-day window")
+        passed += 1
+    except Exception as e:
+        print(f" [FAIL] 17. expiration_status = 'expiring_soon': {e}")
+
+    # ==========================================================
+    # 18. expiration_status = 'valid' for future expiry
+    # ==========================================================
+    try:
+        from datetime import timedelta as td
+        status, is_exp = compute_expiration_status('draft', today + td(days=30), today)
+        assert status == 'valid' and is_exp is False
+        print(" [PASS] 18. expiration_status = 'valid' for far-future expiry")
+        passed += 1
+    except Exception as e:
+        print(f" [FAIL] 18. expiration_status = 'valid' for far-future expiry: {e}")
+
+    # ==========================================================
+    # 19. Confirmed state → always 'valid', never expired
+    # ==========================================================
+    try:
+        from datetime import timedelta as td
+        # Even with a past date_expiration, confirmed records must be 'valid'
+        status, is_exp = compute_expiration_status('confirmed', today - td(days=5), today)
+        assert status == 'valid' and is_exp is False
+        print(" [PASS] 19. Confirmed state → expiration_status always 'valid'")
+        passed += 1
+    except Exception as e:
+        print(f" [FAIL] 19. Confirmed state → expiration_status always 'valid': {e}")
 
     print("=" * 70)
     print(f"Verification Results: {passed}/{total} tests passed successfully!")

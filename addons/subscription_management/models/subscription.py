@@ -2,6 +2,7 @@
 # Part of Odoo Subscription Management System.
 
 import logging
+from datetime import timedelta
 from odoo import api, fields, models, _
 from odoo.exceptions import ValidationError, UserError, AccessError
 
@@ -89,6 +90,33 @@ class SubscriptionSubscription(models.Model):
         string='Expiry Date',
         tracking=True,
         help='Date until which this quotation remains valid and eligible for confirmation.'
+    )
+    validity_days = fields.Integer(
+        string='Validity Duration (Days)',
+        default=lambda self: int(self.env['ir.config_parameter'].sudo().get_param(
+            'subscription_base.default_validity_days', default='30'
+        )),
+        tracking=True,
+        help='Number of days this quotation remains valid after its creation date. '
+             'Changing this value will automatically recalculate the expiry date.'
+    )
+    expiration_status = fields.Selection(
+        selection=[
+            ('valid', 'Valid'),
+            ('expiring_soon', 'Expiring Soon'),
+            ('expired', 'Expired'),
+        ],
+        string='Expiration Status',
+        compute='_compute_expiration_status',
+        store=True,
+        tracking=True,
+        help='Current validity status: Valid (plenty of time), Expiring Soon (≤7 days), Expired (past expiry date).'
+    )
+    is_expired = fields.Boolean(
+        string='Is Expired',
+        compute='_compute_expiration_status',
+        store=True,
+        help='True when the quotation expiry date has passed and the quotation has not yet been confirmed.'
     )
     date_start = fields.Date(
         string='Start Date',
@@ -312,7 +340,77 @@ class SubscriptionSubscription(models.Model):
                     'message': str(e),
                 }}
 
+
+    # --- Expiration Status Computation ---
+
+    @api.depends('date_expiration', 'state')
+    def _compute_expiration_status(self):
+        """Compute expiration_status and is_expired based on current date vs expiry date.
+
+        Business rules:
+        - Quotations already confirmed or beyond (active, paused, closed) are never 'expired'.
+        - 'expiring_soon' threshold is 7 days before expiry.
+        - 'expired' means date_expiration < today for draft/quotation state records.
+        """
+        _EXPIRING_SOON_DAYS = 7
+        today = fields.Date.today()
+        expiring_threshold = today + timedelta(days=_EXPIRING_SOON_DAYS)
+
+        for sub in self:
+            # Confirmed/active subscriptions are not subject to expiration logic
+            if sub.state in ('confirmed', 'active', 'paused', 'closed'):
+                sub.expiration_status = 'valid'
+                sub.is_expired = False
+            elif not sub.date_expiration:
+                sub.expiration_status = 'valid'
+                sub.is_expired = False
+            elif sub.date_expiration < today:
+                sub.expiration_status = 'expired'
+                sub.is_expired = True
+            elif sub.date_expiration <= expiring_threshold:
+                sub.expiration_status = 'expiring_soon'
+                sub.is_expired = False
+            else:
+                sub.expiration_status = 'valid'
+                sub.is_expired = False
+
+    @api.onchange('date_quotation', 'validity_days')
+    def _onchange_validity_days(self):
+        """Auto-calculate expiry date when quotation date or validity duration changes."""
+        if self.date_quotation and self.validity_days and self.validity_days > 0:
+            self.date_expiration = self.date_quotation + timedelta(days=self.validity_days)
+
+    @api.constrains('validity_days')
+    def _check_validity_days(self):
+        """Ensure validity duration is a non-negative integer."""
+        for sub in self:
+            if sub.validity_days < 0:
+                raise ValidationError(_(
+                    "Validity duration cannot be negative. "
+                    "Please enter zero or a positive number of days."
+                ))
+
+    # --- Scheduled Action for Expiration Refresh ---
+
+    @api.model
+    def _cron_refresh_expiration_status(self):
+        """Scheduled action: recompute expiration_status for all open quotations.
+
+        Triggered daily by ir.cron. Only processes draft and quotation-sent records
+        to avoid touching confirmed/active subscriptions.
+        """
+        open_quotations = self.search([('state', 'in', ('draft', 'quotation'))])
+        if open_quotations:
+            open_quotations._compute_expiration_status()
+            _logger.info(
+                "Subscription cron: refreshed expiration_status for %d quotation(s).",
+                len(open_quotations)
+            )
+        else:
+            _logger.debug("Subscription cron: no open quotations to refresh.")
+
     # --- Quotation Lifecycle Actions ---
+
     def action_send_quotation(self):
         """Transition quotation from draft to quotation sent."""
         for sub in self:
