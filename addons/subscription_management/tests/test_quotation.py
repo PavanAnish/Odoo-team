@@ -4,6 +4,7 @@
 from datetime import date, timedelta
 
 try:
+    from odoo import fields
     from odoo.tests.common import TransactionCase, tagged
     from odoo.exceptions import ValidationError, UserError, AccessError
 except ImportError:
@@ -14,6 +15,7 @@ except ImportError:
     class ValidationError(Exception): pass
     class UserError(Exception): pass
     class AccessError(Exception): pass
+    fields = None
 
 
 @tagged('post_install', '-at_install')
