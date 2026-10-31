@@ -4,30 +4,36 @@ A unified platform for managing products, subscription plans,
 quotations, recurring invoices, payments, and financial reporting.
 
 > **Project scenario:** Brightloop Software\
-> This README describes the proposed system workflow and the
+> This README describes the system workflow, technology stack, and the
 > responsibilities of the four development modules. It is the team's
 > shared reference for implementation and integration.
 
-------------------------------------------------------------------------
+---
 
 ## Table of Contents
 
 1.  [Project Overview](#1-project-overview)
-2.  [User Roles](#2-user-roles)
-3.  [Overall System Workflow](#3-overall-system-workflow)
-4.  [Invoice and Payment Workflow](#4-invoice-and-payment-workflow)
-5.  [Four-Module Integration](#5-four-module-integration)
-6.  [Module 4 Internal Architecture](#6-module-4-internal-architecture)
-7.  [Conceptual Database
-    Relationships](#7-conceptual-database-relationships)
-8.  [Module Responsibilities](#8-module-responsibilities)
-9.  [Business Rules and Integration
-    Contracts](#9-business-rules-and-integration-contracts)
-10. [Development and Git Workflow](#10-development-and-git-workflow)
-11. [Testing Checklist](#11-testing-checklist)
-12. [Setup Instructions](#12-setup-instructions)
+2.  [Project Objectives](#2-project-objectives)
+3.  [Technology Stack](#3-technology-stack)
+4.  [System Architecture](#4-system-architecture)
+5.  [User Roles and Permissions](#5-user-roles-and-permissions)
+6.  [Project Modules and Team Responsibilities](#6-project-modules-and-team-responsibilities)
+7.  [Overall System Workflow](#7-overall-system-workflow)
+8.  [Invoice and Payment Workflow](#8-invoice-and-payment-workflow)
+9.  [Module Integration Diagram](#9-module-integration-diagram)
+10. [Conceptual Database Relationships](#10-conceptual-database-relationships)
+11. [Important Business Rules](#11-important-business-rules)
+12. [Database and Security Design](#12-database-and-security-design)
+13. [Installation and Setup Instructions](#13-installation-and-setup-instructions)
+14. [Required Python Packages](#14-required-python-packages)
+15. [Environment Variable Configuration](#15-environment-variable-configuration)
+16. [GitHub Collaboration Workflow](#16-github-collaboration-workflow)
+17. [Testing Checklist](#17-testing-checklist)
+18. [Performance Requirements](#18-performance-requirements)
+19. [Future Improvements](#19-future-improvements)
+20. [Project Status](#20-project-status)
 
-------------------------------------------------------------------------
+---
 
 ## 1. Project Overview
 
@@ -45,7 +51,9 @@ subscription business:
 The system is intended to replace manual spreadsheet tracking, manually
 prepared invoices, and manually reconciled payments.
 
-### Main system goals
+---
+
+## 2. Project Objectives
 
 -   Reduce missed renewals and billing errors.
 -   Prevent duplicate invoices and duplicate payment records.
@@ -58,40 +66,174 @@ prepared invoices, and manually reconciled payments.
 -   Keep pages responsive with thousands of subscription records; the
     project brief specifies a target of under two seconds.
 
-------------------------------------------------------------------------
+---
 
-## 2. User Roles
+## 3. Technology Stack
 
-  -----------------------------------------------------------------------
-  Role                                Main responsibilities
-  ----------------------------------- -----------------------------------
-  Admin                               Manage the system, staff accounts,
-                                      products, plans, taxes, and
-                                      discount rules; access financial
-                                      information.
+### Backend
 
-  Internal Staff                      Handle permitted customer,
-                                      quotation, subscription, invoice,
-                                      and payment operations.
+| Component       | Technology         |
+|-----------------|--------------------|
+| Language        | Python 3           |
+| Framework       | Django 5.2 LTS     |
 
-  Customer                            Access and manage their own
-                                      account, subscriptions, and
-                                      invoices through the customer
-                                      portal.
-  -----------------------------------------------------------------------
+### Database
+
+| Component       | Technology            |
+|-----------------|-----------------------|
+| Database        | Supabase PostgreSQL   |
+| ORM             | Django ORM            |
+| Driver          | psycopg (PostgreSQL)  |
+
+### Frontend
+
+| Component       | Technology      |
+|-----------------|-----------------|
+| Markup          | HTML5           |
+| Styling         | CSS3            |
+| CSS Framework   | Bootstrap 5     |
+| Scripting       | JavaScript      |
+
+### Additional Libraries
+
+| Library           | Purpose                            |
+|-------------------|------------------------------------|
+| ReportLab         | PDF invoice generation             |
+| OpenPyXL          | Excel report generation            |
+| Pillow            | Image handling                     |
+| django-filter     | Filtering and searching            |
+| python-decouple   | Environment variable management    |
+| Chart.js          | Dashboard charts (frontend)        |
+
+### Development Tools
+
+| Tool                  | Purpose                          |
+|-----------------------|----------------------------------|
+| Visual Studio Code    | Code editor                      |
+| Git and GitHub        | Version control and collaboration|
+| Postman               | API testing (optional)           |
+| pgAdmin               | Database management (optional)   |
+
+---
+
+## 4. System Architecture
+
+```
+Frontend (HTML + CSS + Bootstrap + JavaScript)
+                    ↓
+Backend (Django + Python)
+                    ↓
+Database (Supabase PostgreSQL)
+```
+
+```mermaid
+flowchart TD
+    A["Frontend\nHTML5 + CSS3 + Bootstrap 5 + JavaScript + Chart.js"] -->|"HTTP Requests"| B["Backend\nDjango 5.2 LTS + Python 3"]
+    B -->|"Django ORM + psycopg"| C["Database\nSupabase PostgreSQL"]
+    B -->|"ReportLab"| D["PDF Generation"]
+    B -->|"OpenPyXL"| E["Excel Exports"]
+    B -->|"django-filter"| F["Filtering & Search"]
+```
+
+### Architecture details
+
+-   **Django** handles application logic, authentication, permissions,
+    validation, and all business operations.
+-   **Supabase** provides hosted PostgreSQL database services.
+-   Django connects directly to Supabase PostgreSQL using **psycopg**
+    and **Django ORM**. No Supabase client SDK is required.
+-   **Django authentication** is used for user login, session
+    management, and role-based access control. Supabase Auth is not
+    required.
+-   Database credentials must remain in environment variables managed
+    by **python-decouple** and must never be exposed in frontend code.
+-   Database access must be protected through Django's permission
+    framework and appropriate security controls.
+
+---
+
+## 5. User Roles and Permissions
+
+| Role            | Main Responsibilities                                                                                         |
+|-----------------|---------------------------------------------------------------------------------------------------------------|
+| Admin           | Manage the system, staff accounts, products, plans, taxes, and discount rules; access financial information.   |
+| Internal Staff  | Handle permitted customer, quotation, subscription, invoice, and payment operations.                          |
+| Customer        | Access and manage their own account, subscriptions, and invoices through the customer portal.                  |
 
 **Access rule:** Only an admin can create staff accounts. Backend
 authorization must enforce role permissions; hiding a button in the
 frontend is not sufficient.
 
-------------------------------------------------------------------------
+---
 
-## 3. Overall System Workflow
+## 6. Project Modules and Team Responsibilities
+
+| Module    | Owner    | Main Deliverables                                                                                |
+|-----------|----------|--------------------------------------------------------------------------------------------------|
+| Module 1  | Member 1 | Authentication, customer management, roles, and access control                                   |
+| Module 2  | Member 2 | Products, variants, plans, tax rules, and discounts                                              |
+| Module 3  | Member 3 | Quotation templates, quotations, subscriptions, and lifecycle                                    |
+| Module 4  | Member 4 | Invoice management, payments, financial dashboard, and reports                                   |
+
+### Module 1: Authentication & Customer Management
+
+-   Registration and login.
+-   User roles: Admin, Staff, and Customer.
+-   Password validation and reset.
+-   Customer management.
+-   Role-based permissions.
+
+### Module 2: Products, Plans, Taxes & Discounts
+
+-   Product and variant management.
+-   Subscription plan management.
+-   Billing frequency configuration.
+-   Tax configuration.
+-   Discount rules.
+
+### Module 3: Quotations & Subscription Management
+
+-   Quotation creation and management.
+-   Quotation validity tracking.
+-   Quotation-to-subscription conversion.
+-   Subscription lifecycle management.
+-   Subscription renewal, pause, and closure.
+
+### Module 4: Invoices, Payments & Financial Reports
+
+-   Automatic invoice generation.
+-   Invoice status management.
+-   PDF invoice generation (ReportLab).
+-   Payment recording.
+-   Outstanding and overdue tracking.
+-   Revenue reports.
+-   Payment reports.
+-   Financial dashboard (Chart.js).
+-   Excel exports (OpenPyXL).
+
+#### Module 4 issue breakdown
+
+| Issue | Scope                                       | Priority  |
+|-------|---------------------------------------------|-----------|
+| #1    | Automatic invoice generation                | High      |
+| #2    | Invoice status and lifecycle                | High      |
+| #3    | Invoice viewing, PDF, and printing          | Medium    |
+| #4    | Payment recording system                    | High      |
+| #5    | Outstanding balance and overdue tracking    | High      |
+| #6    | Admin financial dashboard                   | Medium    |
+| #7    | Revenue and payment reports                 | Medium    |
+| #8    | Invoice and payment filtering               | Medium    |
+| #9    | Billing validation and duplicate prevention | High      |
+| #10   | Performance optimization and testing        | Important |
+
+---
+
+## 7. Overall System Workflow
 
 This diagram shows the main journey from customer registration to
 billing and financial reporting.
 
-``` mermaid
+```mermaid
 flowchart TD
     A([Start]) --> B[Customer Registration]
     B --> C[Authentication]
@@ -160,14 +302,14 @@ flowchart TD
 -   Subscription renewal and closure are controlled by the subscription
     lifecycle rules.
 
-------------------------------------------------------------------------
+---
 
-## 4. Invoice and Payment Workflow
+## 8. Invoice and Payment Workflow
 
 This is the detailed workflow for **Module 4: Invoices, Payments &
 Reports**.
 
-``` mermaid
+```mermaid
 flowchart TD
     A[Active Subscription] --> B{Billing Date Reached?}
 
@@ -245,14 +387,14 @@ flowchart TD
 > additional persisted statuses or derived display states, and document
 > that decision consistently.
 
-------------------------------------------------------------------------
+---
 
-## 5. Four-Module Integration
+## 9. Module Integration Diagram
 
 The four modules are developed separately but share data and depend on
 one another.
 
-``` mermaid
+```mermaid
 flowchart TB
     M1["MODULE 1<br/>Authentication and Customers"]
     M2["MODULE 2<br/>Products, Plans, Taxes and Discounts"]
@@ -275,27 +417,12 @@ flowchart TB
 
 ### Integration dependencies
 
-  -----------------------------------------------------------------------
-  Module                  Provides                Used by
-  ----------------------- ----------------------- -----------------------
-  Module 1:               User IDs, customer IDs, Modules 3 and 4
-  Authentication &        roles, access           
-  Customers               permissions             
-
-  Module 2: Products,     Product, variant, plan, Modules 3 and 4
-  Plans, Taxes &          tax, and discount data  
-  Discounts                                       
-
-  Module 3: Quotations &  Subscription ID,        Module 4
-  Subscriptions           customer, billing       
-                          dates, subscription     
-                          lines, lifecycle status 
-
-  Module 4: Invoices,     Invoice records,        Dashboard and
-  Payments & Reports      payment records,        customer/staff views
-                          balances, financial     
-                          summaries               
-  -----------------------------------------------------------------------
+| Module                                  | Provides                                    | Used By                            |
+|-----------------------------------------|---------------------------------------------|------------------------------------|
+| Module 1: Authentication & Customers    | User IDs, customer IDs, roles, permissions  | Modules 3 and 4                    |
+| Module 2: Products, Plans, Taxes        | Product, variant, plan, tax, discount data  | Modules 3 and 4                    |
+| Module 3: Quotations & Subscriptions    | Subscription ID, customer, billing dates, subscription lines, lifecycle status | Module 4 |
+| Module 4: Invoices, Payments & Reports  | Invoice records, payment records, balances, financial summaries | Dashboard and customer/staff views |
 
 ### Integration sequence
 
@@ -306,16 +433,14 @@ flowchart TB
 5.  Module 4 consumes eligible subscription data to generate invoices
     and record payments.
 6.  The dashboard and reports read consistent data from the shared
-    database or documented APIs.
+    database.
 
-------------------------------------------------------------------------
-
-## 6. Module 4 Internal Architecture
+### Module 4 internal architecture
 
 Module 4 contains three major areas: invoice management, payment
 management, and financial reporting.
 
-``` mermaid
+```mermaid
 flowchart TD
     A["MODULE 4"] --> B["Invoice Management"]
     A --> C["Payment Management"]
@@ -324,7 +449,7 @@ flowchart TD
     B --> E["Invoice Generation"]
     B --> F["Invoice Calculation"]
     B --> G["Invoice Status and Actions"]
-    B --> H["PDF and Printing"]
+    B --> H["PDF and Printing (ReportLab)"]
 
     C --> I["Record Payment"]
     C --> J["Payment Validation"]
@@ -335,99 +460,52 @@ flowchart TD
     D --> N["Payment Summary"]
     D --> O["Overdue Invoices"]
     D --> P["Active Subscription Statistics"]
+    D --> Q["Excel Exports (OpenPyXL)"]
 
-    E --> Q[("Shared Database")]
-    F --> Q
-    G --> Q
-    I --> Q
-    J --> Q
-    K --> Q
-    L --> Q
+    E --> R[("Supabase PostgreSQL")]
+    F --> R
+    G --> R
+    I --> R
+    J --> R
+    K --> R
+    L --> R
 
-    Q --> R["Dashboard / Reporting API"]
-    R --> S["Admin and Finance Dashboard"]
-    R --> T["Reports, Filters and Exports"]
+    R --> S["Dashboard / Chart.js"]
+    S --> T["Admin and Finance Dashboard"]
+    S --> U["Reports, Filters and Exports"]
 ```
 
-### Module 4 functional areas
+### Suggested Module 4 URL patterns
 
-  -----------------------------------------------------------------------
-  Area                                Responsibilities
-  ----------------------------------- -----------------------------------
-  Invoice Management                  Generate invoices, calculate
-                                      totals, manage invoice lifecycle,
-                                      send, cancel, print, and export
-                                      invoices.
+The exact URL patterns depend on the team's Django project structure.
+Agree on view names and URL conventions before parallel implementation.
 
-  Payment Management                  Record payments, validate amounts,
-                                      associate payments with invoices,
-                                      and calculate outstanding balances.
+| Operation                        | Purpose                                              |
+|----------------------------------|------------------------------------------------------|
+| `GET /invoices/`                 | List invoices with pagination and filters.           |
+| `GET /invoices/<id>/`            | Retrieve one invoice and its lines.                  |
+| `POST /invoices/generate/`       | Generate an invoice for an eligible subscription.    |
+| `POST /invoices/<id>/confirm/`   | Confirm an eligible draft invoice.                   |
+| `POST /invoices/<id>/cancel/`    | Cancel an eligible invoice.                          |
+| `GET /invoices/<id>/pdf/`        | Generate or retrieve a printable PDF invoice.        |
+| `GET /invoices/<id>/payments/`   | List payments associated with an invoice.            |
+| `POST /payments/`                | Record a payment against an invoice.                 |
+| `GET /payments/`                 | List payments with pagination and filters.           |
+| `GET /reports/summary/`          | Retrieve financial dashboard summary data.           |
+| `GET /reports/revenue/`          | Retrieve revenue report data.                        |
+| `GET /reports/outstanding/`      | Retrieve outstanding and overdue invoice data.       |
+| `GET /reports/export/excel/`     | Export report data as Excel file.                    |
 
-  Financial Reporting                 Display revenue, payment summaries,
-                                      overdue invoices, active
-                                      subscriptions, filters, and
-                                      exports.
+---
 
-  Reliability and Performance         Prevent duplicate operations,
-                                      validate financial data, paginate
-                                      large lists, and optimize queries.
-  -----------------------------------------------------------------------
-
-### Suggested Module 4 API contract
-
-The exact routes depend on the team's backend framework. Agree on
-request and response shapes before parallel implementation.
-
-  -----------------------------------------------------------------------
-  Operation                           Purpose
-  ----------------------------------- -----------------------------------
-  `GET /invoices`                     List invoices with pagination and
-                                      filters.
-
-  `GET /invoices/:id`                 Retrieve one invoice and its lines.
-
-  `POST /invoices/generate`           Generate an invoice for an eligible
-                                      subscription and billing cycle.
-
-  `POST /invoices/:id/confirm`        Confirm an eligible draft invoice.
-
-  `POST /invoices/:id/cancel`         Cancel an eligible invoice.
-
-  `GET /invoices/:id/pdf`             Generate or retrieve a printable
-                                      invoice.
-
-  `GET /invoices/:id/payments`        List payments associated with an
-                                      invoice.
-
-  `POST /payments`                    Record a payment against an
-                                      invoice.
-
-  `GET /payments`                     List payments with pagination and
-                                      filters.
-
-  `GET /reports/summary`              Retrieve financial dashboard
-                                      summary data.
-
-  `GET /reports/revenue`              Retrieve revenue report data.
-
-  `GET /reports/outstanding`          Retrieve outstanding and overdue
-                                      invoice data.
-  -----------------------------------------------------------------------
-
-**API contract requirements:** Document authentication, required fields,
-response shapes, validation errors, pagination format, and authorization
-for each endpoint. Do not assume these example routes already exist.
-
-------------------------------------------------------------------------
-
-## 7. Conceptual Database Relationships
+## 10. Conceptual Database Relationships
 
 The following is a conceptual relationship diagram. It is a discussion
 baseline, not a finalized database schema. Confirm table names, keys,
 optional relationships, and cardinalities with all module owners before
 implementing migrations.
 
-``` mermaid
+```mermaid
 erDiagram
     USERS ||--o{ CUSTOMERS : manages
     CUSTOMERS ||--o{ SUBSCRIPTIONS : owns
@@ -459,80 +537,42 @@ erDiagram
 -   **Tax and discount rules:** Configured rules used when calculating
     eligible invoice amounts.
 
-### Data consistency rules
+---
 
--   Use stable primary keys and foreign keys.
--   Store monetary amounts using an appropriate fixed-precision decimal
-    type, not floating-point arithmetic.
--   Define currency and rounding rules.
--   Store timestamps consistently and apply the business timezone when
-    determining billing and due dates.
--   Preserve the invoice calculation details used at the time of
-    billing, so later changes to a product or tax rule do not silently
-    rewrite historical invoices.
--   Use database transactions for operations that must update multiple
-    related records together.
--   Add indexes for frequently filtered fields such as customer ID,
-    subscription ID, invoice number, status, due date, and payment date.
+## 11. Important Business Rules
 
-------------------------------------------------------------------------
+### Billing rules
 
-## 8. Module Responsibilities
-
-  -----------------------------------------------------------------------
-  Module                  Owner                   Main deliverables
-  ----------------------- ----------------------- -----------------------
-  Module 1                Member 1                Authentication,
-                                                  customer management,
-                                                  roles, and access
-                                                  control
-
-  Module 2                Member 2                Products, variants,
-                                                  plans, tax rules, and
-                                                  discounts
-
-  Module 3                Member 3                Quotation templates,
-                                                  quotations,
-                                                  subscriptions, and
-                                                  lifecycle
-
-  Module 4                Member 4                Invoice management,
-                                                  payments, financial
-                                                  dashboard, and reports
-  -----------------------------------------------------------------------
-
-### Module 4 issue breakdown
-
-  Issue   Scope                                         Priority
-  ------- --------------------------------------------- -----------
-  #1      Automatic invoice generation                  High
-  #2      Invoice status and lifecycle                  High
-  #3      Invoice viewing, PDF, and printing            Medium
-  #4      Payment recording system                      High
-  #5      Outstanding balance and overdue tracking      High
-  #6      Admin financial dashboard                     Medium
-  #7      Revenue and payment reports                   Medium
-  #8      Invoice and payment filtering                 Medium
-  #9      Billing validation and duplicate prevention   High
-  #10     Performance optimization and testing          Important
-
-------------------------------------------------------------------------
-
-## 9. Business Rules and Integration Contracts
-
-Before implementation, all four members should agree on the following:
+-   No duplicate invoices for the same subscription billing cycle.
+    Invoice generation must be idempotent.
+-   Correct tax and discount calculations must be applied consistently.
+-   Use Python `Decimal` for all financial calculations. Do not use
+    floating-point arithmetic.
+-   An invoice is marked as **Paid** only when its outstanding balance
+    reaches zero.
+-   An invoice is **Overdue** when its due date has passed and an
+    outstanding balance remains.
+-   Payments must be linked to the correct invoice.
+-   Historical invoice calculations must remain consistent. Later
+    changes to a product price, tax rule, or discount must not silently
+    rewrite previously generated invoices.
+-   Cancelled invoices must not be counted as collected revenue.
 
 ### Shared contracts
 
+Before implementation, all four members should agree on:
+
 -   Customer, user, product, plan, subscription, invoice, and payment
     identifiers.
--   Database table names and ownership.
--   API request and response formats.
+-   Django model names and ownership.
+-   URL patterns and view conventions.
 -   Date, time, timezone, currency, and rounding conventions.
 -   Role permissions and which module enforces them.
 -   Error response format and validation conventions.
 
-### Billing rules
+### Billing design decisions
+
+The team should document agreed answers to:
 
 -   What event or scheduled job triggers recurring billing?
 -   How is a billing cycle uniquely identified?
@@ -549,14 +589,227 @@ Before implementation, all four members should agree on the following:
 Record agreed answers in the project documentation. Do not let different
 modules implement conflicting rules.
 
-------------------------------------------------------------------------
+---
 
-## 10. Development and Git Workflow
+## 12. Database and Security Design
+
+### Data consistency rules
+
+-   Use stable primary keys and foreign keys (Django auto-generated IDs
+    or UUIDs as agreed by the team).
+-   Store monetary amounts using `DecimalField` with appropriate
+    `max_digits` and `decimal_places`. Never use `FloatField` for money.
+-   Define currency and rounding rules.
+-   Store timestamps consistently using Django's timezone-aware
+    `DateTimeField` and apply the business timezone when determining
+    billing and due dates.
+-   Preserve the invoice calculation details used at the time of
+    billing, so later changes to a product or tax rule do not silently
+    rewrite historical invoices.
+-   Use database transactions (`django.db.transaction.atomic`) for
+    operations that must update multiple related records together.
+-   Add `db_index=True` for frequently filtered fields such as customer
+    ID, subscription ID, invoice number, status, due date, and payment
+    date.
+
+### Security rules
+
+-   Database credentials must be stored in environment variables using
+    `python-decouple`. Never hardcode credentials in source code.
+-   Database credentials must never be exposed in frontend code.
+-   Database access must be protected through Django's permission
+    framework.
+-   All views must enforce role-based access control on the backend.
+    Hiding UI elements is not sufficient.
+-   Customers can only view their own invoices and subscriptions.
+-   Staff cannot perform admin-only actions.
+-   `DEBUG` must be set to `False` in production.
+-   `SECRET_KEY` must be unique and kept secret.
+
+---
+
+## 13. Installation and Setup Instructions
+
+### Prerequisites
+
+-   Python 3.10 or later
+-   pip (Python package manager)
+-   Git
+-   A Supabase account (free tier is sufficient for development)
+
+### Step 1: Clone the repository
+
+```bash
+git clone <YOUR_REPOSITORY_URL>
+
+cd <PROJECT_FOLDER>
+```
+
+### Step 2: Create and activate a virtual environment
+
+```bash
+python -m venv venv
+```
+
+**Windows activation:**
+
+```bash
+venv\Scripts\activate
+```
+
+**macOS / Linux activation:**
+
+```bash
+source venv/bin/activate
+```
+
+### Step 3: Install dependencies
+
+```bash
+pip install django "psycopg[binary]" pillow reportlab openpyxl django-filter python-decouple
+```
+
+### Step 4: Create Supabase project
+
+1.  Go to [https://supabase.com](https://supabase.com) and create a new
+    project.
+2.  Navigate to **Project Settings → Database**.
+3.  Note the following connection details:
+    -   Host
+    -   Database name
+    -   Port
+    -   User
+    -   Password
+
+### Step 5: Configure environment variables
+
+Create a `.env` file in the project root (copy from `.env.example`):
+
+```bash
+cp .env.example .env
+```
+
+Fill in your Supabase PostgreSQL connection details and Django settings.
+See the [Environment Variable Configuration](#15-environment-variable-configuration)
+section for details.
+
+### Step 6: Create Django project (example)
+
+> **Note:** These commands are documented as examples for initial setup.
+> They should only be run once when first creating the project structure.
+
+```bash
+# Create Django project
+django-admin startproject subscription_management .
+
+# Create Django apps (one per module)
+python manage.py startapp accounts
+python manage.py startapp products
+python manage.py startapp subscriptions
+python manage.py startapp invoices
+```
+
+### Step 7: Configure Django database settings
+
+In `settings.py`, configure the database connection using
+`python-decouple`:
+
+```python
+from decouple import config
+
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': config('DB_NAME'),
+        'USER': config('DB_USER'),
+        'PASSWORD': config('DB_PASSWORD'),
+        'HOST': config('DB_HOST'),
+        'PORT': config('DB_PORT', default='5432'),
+    }
+}
+```
+
+### Step 8: Run migrations
+
+```bash
+python manage.py makemigrations
+python manage.py migrate
+```
+
+### Step 9: Create a superuser
+
+```bash
+python manage.py createsuperuser
+```
+
+### Step 10: Start the development server
+
+```bash
+python manage.py runserver
+```
+
+The application will be available at `http://127.0.0.1:8000/`.
+
+---
+
+## 14. Required Python Packages
+
+| Package           | Version      | Purpose                         |
+|-------------------|--------------|---------------------------------|
+| Django            | 5.2 LTS      | Web framework                   |
+| psycopg[binary]   | Latest       | PostgreSQL database driver      |
+| Pillow            | Latest       | Image handling                  |
+| ReportLab         | Latest       | PDF invoice generation          |
+| OpenPyXL          | Latest       | Excel report generation         |
+| django-filter     | Latest       | Filtering and searching         |
+| python-decouple   | Latest       | Environment variable management |
+
+### Generating requirements.txt
+
+After installing all packages, generate a `requirements.txt` file:
+
+```bash
+pip freeze > requirements.txt
+```
+
+To install from an existing `requirements.txt`:
+
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+## 15. Environment Variable Configuration
+
+### `.env.example`
+
+```env
+# Django Settings
+SECRET_KEY=your-secret-key-here
+DEBUG=True
+ALLOWED_HOSTS=127.0.0.1,localhost
+
+# Supabase PostgreSQL Database
+DB_NAME=postgres
+DB_USER=postgres.your-project-ref
+DB_PASSWORD=your-database-password
+DB_HOST=aws-0-region.pooler.supabase.com
+DB_PORT=5432
+```
+
+> **Important:** Never commit the `.env` file to version control. Ensure
+> `.env` is listed in `.gitignore`. The `.env.example` file should
+> contain placeholder values only.
+
+---
+
+## 16. GitHub Collaboration Workflow
 
 Use separate feature branches so that each member can work
 independently.
 
-``` mermaid
+```mermaid
 flowchart TD
     A["Create GitHub Issue"] --> B["Assign Issue to Owner"]
     B --> C["Create Feature Branch"]
@@ -576,7 +829,7 @@ flowchart TD
 
 ### Suggested branch names
 
-``` text
+```text
 main
 integration
 
@@ -597,8 +850,8 @@ feature/financial-reports
 6.  Link each Pull Request to its GitHub Issue.
 7.  Request review before merging.
 8.  Test the integrated workflow, not only individual modules.
-9.  Do not overwrite another member's migrations or shared API contracts
-    without discussion.
+9.  Do not overwrite another member's migrations or shared model
+    definitions without discussion.
 10. Keep the README updated when an agreed workflow or contract changes.
 
 ### Required Pull Request submission
@@ -607,15 +860,15 @@ Each member should provide:
 
 -   Source code for the assigned functionality.
 -   Database migrations or schema changes.
--   API endpoints and documentation.
+-   Django URL patterns and view documentation.
 -   Screenshots or a short demonstration.
 -   Test cases and results.
 -   Known bugs and unresolved issues.
 -   A Pull Request linked to the relevant issue.
 
-------------------------------------------------------------------------
+---
 
-## 11. Testing Checklist
+## 17. Testing Checklist
 
 ### Invoice tests
 
@@ -658,64 +911,60 @@ Each member should provide:
 
 -   [ ] Customers can only view their own invoices and subscriptions.
 -   [ ] Staff cannot perform admin-only actions.
--   [ ] Unauthorized API requests are rejected.
+-   [ ] Unauthorized requests are rejected.
 -   [ ] Payment and invoice operations validate ownership and
     permissions on the backend.
 
-------------------------------------------------------------------------
+---
 
-## 12. Setup Instructions
+## 18. Performance Requirements
 
-> Replace the placeholders below with the actual repository setup
-> details once the team finalizes the technology stack.
+-   Key pages must load within **two seconds** in the agreed test
+    environment.
+-   Large lists (invoices, payments, subscriptions) must use
+    **pagination** through Django's built-in pagination or
+    django-filter.
+-   Database queries should be optimized with appropriate indexes
+    (`db_index=True`) on frequently filtered fields.
+-   Use `select_related()` and `prefetch_related()` to minimize
+    database queries in list views.
+-   Avoid N+1 query patterns.
 
-### Prerequisites
+---
 
--   [ ] Required runtime and version: `TODO`
--   [ ] Package manager: `TODO`
--   [ ] Database and version: `TODO`
--   [ ] Environment variables: see `.env.example`
+## 19. Future Improvements
 
-### Installation
+-   Email notifications for invoice delivery and payment confirmations.
+-   Supabase Auth integration for additional authentication options.
+-   REST API layer using Django REST Framework for external integrations.
+-   Automated scheduled billing using Django management commands with
+    cron or task queues.
+-   Multi-currency support.
+-   Customer self-service payment portal.
+-   Advanced analytics and trend reporting.
 
-``` bash
-# Clone the repository
-git clone <REPOSITORY_URL>
+---
 
-# Enter the project directory
-cd <PROJECT_DIRECTORY>
+## 20. Project Status
 
-# Install dependencies
-<INSTALL_COMMAND>
+> **Current status:** Planning and initial setup phase.
+>
+> The technology stack has been finalized. Module responsibilities have
+> been assigned. Implementation has not yet begun.
 
-# Configure environment variables
-# Copy .env.example to .env and fill in local values
+| Milestone                        | Status      |
+|----------------------------------|-------------|
+| Technology stack finalized       | ✅ Complete  |
+| Module responsibilities assigned | ✅ Complete  |
+| Database schema design           | 🔲 Planned  |
+| Module 1: Auth & Customers       | 🔲 Planned  |
+| Module 2: Products & Plans       | 🔲 Planned  |
+| Module 3: Quotations & Subs      | 🔲 Planned  |
+| Module 4: Invoices & Payments    | 🔲 Planned  |
+| Integration testing              | 🔲 Planned  |
+| Final deployment                 | 🔲 Planned  |
 
-# Run database migrations
-<MIGRATION_COMMAND>
-
-# Start the development server
-<START_COMMAND>
-```
-
-### Environment variables
-
-Document variable names in `.env.example`, but never commit real
-secrets.
-
-``` env
-DATABASE_URL=
-AUTH_SECRET=
-APP_URL=
-```
-
-### Running tests
-
-``` bash
-<TEST_COMMAND>
-```
-
-------------------------------------------------------------------------
+---
 
 ## Project Reference
 
