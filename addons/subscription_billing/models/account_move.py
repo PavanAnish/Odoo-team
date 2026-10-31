@@ -2,6 +2,7 @@
 # Part of Odoo Subscription Management System.
 
 import logging
+from datetime import date, datetime
 from odoo import api, fields, models, _
 from odoo.exceptions import ValidationError, UserError, AccessError
 
@@ -133,6 +134,57 @@ class AccountMove(models.Model):
         copy=False,
         help='Remaining unpaid balance on this invoice.'
     )
+    invoice_date_due = fields.Date(
+        string='Due Date',
+        index=True,
+        copy=False,
+        default=fields.Date.context_today,
+        help='Date by which the invoice payment is expected.'
+    )
+    is_overdue = fields.Boolean(
+        string='Is Overdue',
+        compute='_compute_overdue_status',
+        store=True,
+        index=True,
+        help='Indicates whether this invoice has passed its due date with an outstanding balance.'
+    )
+    days_overdue = fields.Integer(
+        string='Days Overdue',
+        compute='_compute_overdue_status',
+        store=True,
+        help='Number of days this invoice has passed its due date.'
+    )
+    overdue_status = fields.Selection(
+        selection=[
+            ('not_due', 'Not Due'),
+            ('overdue', 'Overdue'),
+            ('settled', 'Settled'),
+            ('cancelled', 'Cancelled'),
+        ],
+        string='Overdue Status',
+        compute='_compute_overdue_status',
+        store=True,
+        index=True,
+        help='Status reflecting whether the invoice is on time, overdue, settled, or cancelled.'
+    )
+    is_fully_paid = fields.Boolean(
+        string='Is Fully Paid',
+        compute='_compute_payments_and_residual',
+        store=True,
+        help='Indicates whether the invoice has been fully settled.'
+    )
+    is_partially_paid = fields.Boolean(
+        string='Is Partially Paid',
+        compute='_compute_payments_and_residual',
+        store=True,
+        help='Indicates whether the invoice has received partial payments.'
+    )
+    is_unpaid = fields.Boolean(
+        string='Is Unpaid',
+        compute='_compute_payments_and_residual',
+        store=True,
+        help='Indicates whether the invoice has zero payments recorded.'
+    )
 
     PROTECTED_FINALIZED_FIELDS = {
         'invoice_line_ids',
@@ -145,6 +197,7 @@ class AccountMove(models.Model):
         'amount_untaxed',
         'amount_total',
         'amount_tax',
+        'invoice_date_due',
     }
 
     # --- Computes ---
@@ -158,20 +211,95 @@ class AccountMove(models.Model):
         for move in self:
             move.history_count = len(move.history_ids)
 
-    @api.depends('payment_ids.amount', 'payment_ids.state', 'amount_total', 'subscription_amount_total')
+    @api.depends('payment_ids.amount', 'payment_ids.state', 'amount_total', 'subscription_amount_total', 'invoice_status', 'state')
     def _compute_payments_and_residual(self):
         for move in self:
-            payments = move.payment_ids.filtered(lambda p: getattr(p, 'state', None) != 'cancel')
+            is_cancelled = (getattr(move, 'invoice_status', None) == 'cancel' or getattr(move, 'state', None) == 'cancel')
+            if hasattr(move, 'payment_ids') and move.payment_ids:
+                if hasattr(move.payment_ids, 'filtered'):
+                    payments = move.payment_ids.filtered(lambda p: getattr(p, 'state', None) != 'cancel')
+                else:
+                    payments = [p for p in move.payment_ids if getattr(p, 'state', None) != 'cancel']
+            else:
+                payments = []
             total_paid = sum(p.amount for p in payments)
             move.amount_paid = total_paid
             total = move.amount_total or move.subscription_amount_total or 0.0
-            move.amount_residual = max(0.0, round(total - total_paid, 2))
-            if move.amount_residual == 0.0 and total > 0 and total_paid > 0:
-                move.payment_state = 'paid'
-            elif total_paid > 0:
-                move.payment_state = 'partial'
-            else:
+
+            if is_cancelled:
+                move.amount_residual = 0.0
                 move.payment_state = 'not_paid'
+                move.is_fully_paid = False
+                move.is_partially_paid = False
+                move.is_unpaid = False
+            else:
+                residual = max(0.0, round(total - total_paid, 2))
+                move.amount_residual = residual
+
+                if residual == 0.0 and total > 0 and (total_paid >= total or move.invoice_status == 'paid'):
+                    move.payment_state = 'paid'
+                    move.is_fully_paid = True
+                    move.is_partially_paid = False
+                    move.is_unpaid = False
+                elif total_paid > 0:
+                    move.payment_state = 'partial'
+                    move.is_fully_paid = False
+                    move.is_partially_paid = True
+                    move.is_unpaid = False
+                else:
+                    move.payment_state = 'not_paid'
+                    move.is_fully_paid = False
+                    move.is_partially_paid = False
+                    move.is_unpaid = True
+
+    @api.depends('invoice_date_due', 'invoice_date', 'amount_residual', 'invoice_status', 'state', 'payment_state')
+    def _compute_overdue_status(self):
+        today = fields.Date.context_today(self)
+        if isinstance(today, str):
+            try:
+                today = datetime.strptime(today[:10], '%Y-%m-%d').date()
+            except Exception:
+                today = date.today()
+        elif isinstance(today, datetime):
+            today = today.date()
+
+        for move in self:
+            is_cancelled = (getattr(move, 'invoice_status', None) == 'cancel' or getattr(move, 'state', None) == 'cancel')
+            if is_cancelled:
+                move.is_overdue = False
+                move.days_overdue = 0
+                move.overdue_status = 'cancelled'
+                continue
+
+            if getattr(move, 'amount_residual', 0.0) <= 0.0 and (getattr(move, 'payment_state', None) == 'paid' or getattr(move, 'invoice_status', None) == 'paid'):
+                move.is_overdue = False
+                move.days_overdue = 0
+                move.overdue_status = 'settled'
+                continue
+
+            due_date = getattr(move, 'invoice_date_due', None) or getattr(move, 'invoice_date', None)
+            if due_date and getattr(move, 'amount_residual', 0.0) > 0:
+                if isinstance(due_date, str):
+                    try:
+                        due_d = datetime.strptime(due_date[:10], '%Y-%m-%d').date()
+                    except Exception:
+                        due_d = None
+                elif isinstance(due_date, datetime):
+                    due_d = due_date.date()
+                elif isinstance(due_date, date):
+                    due_d = due_date
+                else:
+                    due_d = None
+
+                if due_d and due_d < today:
+                    move.is_overdue = True
+                    move.days_overdue = (today - due_d).days
+                    move.overdue_status = 'overdue'
+                    continue
+
+            move.is_overdue = False
+            move.days_overdue = 0
+            move.overdue_status = 'not_due'
 
     @api.depends('payment_ids')
     def _compute_payment_count(self):
@@ -231,6 +359,8 @@ class AccountMove(models.Model):
         for vals in vals_list:
             if vals.get('subscription_id') and not vals.get('subscription_billing_date'):
                 vals['subscription_billing_date'] = vals.get('invoice_date') or fields.Date.context_today(self)
+            if not vals.get('invoice_date_due'):
+                vals['invoice_date_due'] = vals.get('invoice_date') or fields.Date.context_today(self)
             # Invoices always default to Draft status upon creation
             if not vals.get('invoice_status'):
                 vals['invoice_status'] = 'draft'
@@ -422,8 +552,16 @@ class AccountMove(models.Model):
             move.write({
                 'invoice_status': 'cancel',
                 'state': 'cancel',
+                'amount_residual': 0.0,
+                'is_overdue': False,
+                'days_overdue': 0,
+                'overdue_status': 'cancelled',
                 '_skip_history_log': True,
             })
+            if hasattr(move, '_compute_payments_and_residual'):
+                move._compute_payments_and_residual()
+            if hasattr(move, '_compute_overdue_status'):
+                move._compute_overdue_status()
             move._log_history(
                 action='cancel',
                 previous_status=prev,
@@ -599,4 +737,146 @@ class AccountMove(models.Model):
             'type': 'ir.actions.act_url',
             'url': f'/web/content/account.move/{self.id}/pdf',
             'target': 'self',
+        }
+
+
+    # --- Financial Balances, Overdue Detection & Summaries ---
+    def is_invoice_unpaid(self):
+        """Return True if the invoice has an outstanding balance and no payments recorded."""
+        self.ensure_one()
+        return not (self.invoice_status == 'cancel' or self.state == 'cancel') and self.amount_paid == 0.0 and self.amount_residual > 0.0
+
+    def is_invoice_partially_paid(self):
+        """Return True if the invoice has received partial payment but has residual balance."""
+        self.ensure_one()
+        return not (self.invoice_status == 'cancel' or self.state == 'cancel') and self.amount_paid > 0.0 and self.amount_residual > 0.0
+
+    def is_invoice_fully_paid(self):
+        """Return True if the invoice is fully settled with zero residual balance."""
+        self.ensure_one()
+        return not (self.invoice_status == 'cancel' or self.state == 'cancel') and (self.amount_residual == 0.0 and (self.amount_paid > 0.0 or self.invoice_status == 'paid'))
+
+    @api.model
+    def get_unpaid_invoices(self, domain=None):
+        """Query active invoices that have zero payments recorded."""
+        base_domain = [
+            ('invoice_status', 'in', ['draft', 'confirmed']),
+            ('state', '!=', 'cancel'),
+            ('payment_state', '=', 'not_paid'),
+            ('amount_residual', '>', 0),
+        ]
+        if domain:
+            base_domain = base_domain + domain
+        return self.search(base_domain)
+
+    @api.model
+    def get_partially_paid_invoices(self, domain=None):
+        """Query active invoices that have received partial payments."""
+        base_domain = [
+            ('invoice_status', '=', 'confirmed'),
+            ('state', '!=', 'cancel'),
+            ('payment_state', '=', 'partial'),
+            ('amount_residual', '>', 0),
+        ]
+        if domain:
+            base_domain = base_domain + domain
+        return self.search(base_domain)
+
+    @api.model
+    def get_fully_paid_invoices(self, domain=None):
+        """Query fully settled invoices with zero residual balance."""
+        base_domain = [
+            ('invoice_status', '=', 'paid'),
+            ('state', '!=', 'cancel'),
+            ('amount_residual', '=', 0.0),
+        ]
+        if domain:
+            base_domain = base_domain + domain
+        return self.search(base_domain)
+
+    @api.model
+    def get_overdue_invoices(self, domain=None):
+        """Query invoices that have passed their due date with an outstanding balance."""
+        base_domain = [
+            ('invoice_status', '=', 'confirmed'),
+            ('state', '!=', 'cancel'),
+            ('is_overdue', '=', True),
+            ('amount_residual', '>', 0),
+        ]
+        if domain:
+            base_domain = base_domain + domain
+        return self.search(base_domain)
+
+    @api.model
+    def get_financial_summary(self, domain=None):
+        """Calculate aggregate financial summary across invoices.
+        Strictly excludes cancelled invoices from outstanding and overdue balances.
+        """
+        invoices = self if len(self) > 0 and domain is None else self.search(domain or [])
+
+        total_invoiced = 0.0
+        total_paid = 0.0
+        total_outstanding = 0.0
+        total_overdue = 0.0
+
+        count_draft = 0
+        count_confirmed = 0
+        count_paid = 0
+        count_partial = 0
+        count_unpaid = 0
+        count_overdue = 0
+        count_cancelled = 0
+        count_total = 0
+
+        for inv in invoices:
+            is_cancelled = (getattr(inv, 'invoice_status', None) == 'cancel' or getattr(inv, 'state', None) == 'cancel')
+            if is_cancelled:
+                count_cancelled += 1
+                # Cancelled invoices are strictly excluded from total_invoiced, total_outstanding, and total_overdue
+                continue
+
+            count_total += 1
+            st = getattr(inv, 'invoice_status', 'draft')
+            inv_total = float(getattr(inv, 'amount_total', 0.0) or getattr(inv, 'subscription_amount_total', 0.0) or 0.0)
+            inv_paid = float(getattr(inv, 'amount_paid', 0.0) or 0.0)
+            inv_residual = float(getattr(inv, 'amount_residual', 0.0) or 0.0)
+            is_od = bool(getattr(inv, 'is_overdue', False))
+
+            total_invoiced += inv_total
+            total_paid += inv_paid
+
+            if st == 'draft':
+                count_draft += 1
+                if inv_paid == 0.0:
+                    count_unpaid += 1
+                elif inv_residual > 0:
+                    count_partial += 1
+                total_outstanding += inv_residual
+            elif st == 'confirmed':
+                count_confirmed += 1
+                total_outstanding += inv_residual
+                if is_od and inv_residual > 0:
+                    total_overdue += inv_residual
+                    count_overdue += 1
+
+                if inv_paid == 0.0:
+                    count_unpaid += 1
+                elif inv_residual > 0:
+                    count_partial += 1
+            elif st == 'paid':
+                count_paid += 1
+
+        return {
+            'total_invoiced': round(total_invoiced, 2),
+            'total_paid': round(total_paid, 2),
+            'total_outstanding': round(total_outstanding, 2),
+            'total_overdue': round(total_overdue, 2),
+            'count_total': count_total,
+            'count_draft': count_draft,
+            'count_confirmed': count_confirmed,
+            'count_paid': count_paid,
+            'count_partial': count_partial,
+            'count_unpaid': count_unpaid,
+            'count_overdue': count_overdue,
+            'count_cancelled': count_cancelled,
         }

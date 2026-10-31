@@ -1,7 +1,8 @@
 import {
   $, M, TODAY, BC, B, IC, NAV, slug, D, S, ds, dO,
   toast, modal, X, confirmD, form, del, tog, crud,
-  currentUser, logInvoiceHistory, loadData
+  currentUser, logInvoiceHistory, loadData,
+  isUnpaid, isPartial, isFullyPaid, isOverdue, getFinancialSummary
 } from './shared/store.js';
 
 import { dash } from './dashboard/dashboard.js';
@@ -87,7 +88,7 @@ ${NAV.map(n => `<p><a href="#${slug(n)}" onclick="X()" style="color:var(--c);tex
 
   o.querySelector('#aa').onclick = () => {
     X();
-    toast('3 invoices are overdue totaling ' + M(D.invoices.filter(i => ds(i) === 'Overdue').reduce((a, i) => a + i.amt, 0)));
+    toast('Overdue balance is ' + M(getFinancialSummary(D.invoices).totalOverdue) + ' across ' + getFinancialSummary(D.invoices).countOverdue + ' invoices');
   };
 }
 
@@ -132,6 +133,11 @@ window.runBilling = runBilling;
 window.viewPaymentDetails = viewPaymentDetails;
 window.currentUser = currentUser;
 window.logInvoiceHistory = logInvoiceHistory;
+window.isUnpaid = isUnpaid;
+window.isPartial = isPartial;
+window.isFullyPaid = isFullyPaid;
+window.isOverdue = isOverdue;
+window.getFinancialSummary = getFinancialSummary;
 window.P = P;
 window.R = R;
 window.go = go;
