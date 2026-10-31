@@ -167,13 +167,20 @@ class SubscriptionSubscription(models.Model):
         Generate a customer invoice for this subscription for the designated billing date.
 
         Ensures:
-        - Subscriptions must be active to be billed.
-        - Idempotency: no duplicate invoice is created for the same subscription and billing cycle.
-        - Next billing date is updated ONLY upon successful invoice creation.
+        - Subscriptions must be in 'active' status to be billed.
+        - Checks billing dates and plan frequency.
+        - Prevents duplicate invoices for the same subscription and billing cycle (idempotency).
+        - Generates unique invoice numbers.
+        - Handles failures safely: advances next billing date ONLY upon successful invoice creation.
         """
         self.ensure_one()
+        # 1. Validate subscription status
         if self.state != 'active':
-            raise UserError(_("Invoices can only be generated for active subscriptions (Contract '%s' is in state '%s').") % (self.name, self.state))
+            state_label = dict(self._fields['state'].selection).get(self.state, self.state)
+            raise UserError(_(
+                "Invoices can only be generated for active subscriptions. "
+                "Contract '%s' is currently in '%s' status."
+            ) % (self.name, state_label))
 
         if not self.partner_id:
             raise UserError(_("Cannot generate invoice for subscription '%s': no customer is assigned.") % self.name)
@@ -181,9 +188,20 @@ class SubscriptionSubscription(models.Model):
         if not self.line_ids:
             raise UserError(_("Cannot generate invoice for subscription '%s': no recurring product lines exist.") % self.name)
 
-        target_billing_date = billing_date or self.next_billing_date or fields.Date.context_today(self)
+        target_billing_date = billing_date or self.next_billing_date or self.date_start or fields.Date.context_today(self)
 
-        # 1. Idempotency Check: prevent duplicate invoices for the same subscription and cycle
+        # Validate date boundaries
+        if self.date_start and target_billing_date < self.date_start:
+            raise UserError(_(
+                "Cannot generate invoice for date %s prior to subscription start date (%s)."
+            ) % (target_billing_date, self.date_start))
+
+        if self.date_end and target_billing_date > self.date_end:
+            raise UserError(_(
+                "Cannot generate invoice for date %s past subscription end date (%s)."
+            ) % (target_billing_date, self.date_end))
+
+        # 2. Idempotency Check: prevent duplicate invoices for the same subscription and billing cycle
         existing_invoice = self.env['account.move'].search([
             ('subscription_id', '=', self.id),
             ('state', '!=', 'cancel'),
@@ -194,31 +212,31 @@ class SubscriptionSubscription(models.Model):
 
         if existing_invoice:
             _logger.warning(
-                "Subscription '%s' already has an invoice (%s) for billing cycle %s. Skipping duplicate generation.",
+                "Subscription '%s' already has an active invoice (%s) for billing cycle %s. Skipping duplicate generation.",
                 self.name, existing_invoice.name or existing_invoice.id, target_billing_date
             )
             return existing_invoice
 
-        # 2. Build values and create invoice
+        # 3. Build values and store invoice record in database
         invoice_vals = self._prepare_invoice_vals(target_billing_date)
         invoice = self.env['account.move'].create(invoice_vals)
 
-        # 3. Unique invoice number: trigger Odoo accounting sequence or sequence fallback
+        # 4. Generate unique invoice number
         if auto_post and hasattr(invoice, 'action_post'):
             try:
                 invoice.action_post()
             except Exception as e:
                 _logger.info("Could not auto-post invoice %s for subscription %s: %s", invoice.id, self.name, str(e))
 
-        if not invoice.name or invoice.name == '/':
+        if not invoice.name or invoice.name in ('/', _('New'), 'False'):
             seq_num = (
                 self.env['ir.sequence'].next_by_code('subscription.invoice')
                 or self.env['ir.sequence'].next_by_code('account.move')
             )
-            if seq_num:
-                invoice.name = seq_num
+            year_str = target_billing_date.strftime('%Y') if hasattr(target_billing_date, 'strftime') else str(fields.Date.today().year)
+            invoice.name = seq_num or _('INV/%s/%05d') % (year_str, invoice.id)
 
-        # 4. Advance next billing date ONLY after successful creation of invoice
+        # 5. Advance next billing date ONLY after successful creation and numbering
         next_date = self._get_next_billing_date(target_billing_date)
         if self.date_end and next_date > self.date_end:
             self.next_billing_date = False
@@ -244,15 +262,21 @@ class SubscriptionSubscription(models.Model):
     def _cron_generate_recurring_invoices(self):
         """
         Scheduled Action (cron): automatically generate invoices for all active subscriptions
-        whose next billing date has arrived.
+        due for billing.
 
-        Failed operations on individual subscriptions are isolated with savepoints and logged
-        so that failed operations do not crash the batch or incorrectly advance billing dates.
+        Ensures:
+        - Includes active subscriptions whose next billing date has arrived (or start date if not set).
+        - Failed operations on individual subscriptions are isolated with savepoints and logged
+          so that failed operations do not crash the batch or advance billing dates incorrectly.
         """
         today = fields.Date.context_today(self)
         due_subscriptions = self.search([
             ('state', '=', 'active'),
+            '|',
             ('next_billing_date', '<=', today),
+            '&',
+            ('next_billing_date', '=', False),
+            ('date_start', '<=', today),
         ])
         _logger.info("Cron recurring billing: Found %d active subscriptions due on or before %s", len(due_subscriptions), today)
 

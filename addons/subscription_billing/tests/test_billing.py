@@ -19,7 +19,7 @@ except ImportError:
 
 @tagged('post_install', '-at_install')
 class TestSubscriptionBilling(TransactionCase):
-    """Test automated recurring billing, idempotency, date progression, and error isolation."""
+    """Test automated recurring billing, idempotency, date progression, status validation, and error isolation."""
 
     @classmethod
     def setUpClass(cls):
@@ -80,6 +80,7 @@ class TestSubscriptionBilling(TransactionCase):
         self.assertEqual(invoice.subscription_id, sub, "Invoice must be linked to the originating subscription.")
         self.assertEqual(invoice.subscription_billing_date, self.today, "Billing cycle date must match target date.")
         self.assertTrue(invoice.is_subscription_invoice, "is_subscription_invoice flag must be True.")
+        self.assertTrue(invoice.name and invoice.name not in ('/', 'False'), "Invoice must have a unique invoice number.")
 
         # Assert line values
         self.assertEqual(len(invoice.invoice_line_ids), 1, "Invoice must have 1 line.")
@@ -179,3 +180,50 @@ class TestSubscriptionBilling(TransactionCase):
         self.assertTrue(any(inv.subscription_id == sub_due for inv in invoices), "Due subscription must be billed.")
         self.assertFalse(any(inv.subscription_id == sub_future for inv in invoices), "Future subscription must not be billed.")
         self.assertEqual(sub_future.next_billing_date, future_date, "Future billing date must remain untouched.")
+
+    def test_05_status_validation_rejects_inactive(self):
+        """Ensure non-active subscriptions (draft, paused, closed) cannot generate invoices."""
+        if not hasattr(self, 'env'):
+            return
+
+        sub_draft = self.env['subscription.subscription'].create({
+            'partner_id': self.partner.id,
+            'plan_id': self.plan_monthly.id,
+            'date_start': self.today,
+            'line_ids': [(0, 0, {'product_id': self.product.id, 'quantity': 1.0, 'price_unit': 100.0})],
+        })
+        # state is 'draft'
+        with self.assertRaises(UserError):
+            sub_draft.action_generate_invoice()
+
+        # Confirm and pause
+        sub_draft.action_confirm()
+        sub_draft.action_pause()
+        self.assertEqual(sub_draft.state, 'paused')
+        with self.assertRaises(UserError):
+            sub_draft.action_generate_invoice()
+
+        # Close
+        sub_draft.action_close()
+        self.assertEqual(sub_draft.state, 'closed')
+        with self.assertRaises(UserError):
+            sub_draft.action_generate_invoice()
+
+    def test_06_cron_picks_up_active_subscription_without_next_billing_date(self):
+        """Ensure active subscriptions where next_billing_date is False are safely picked up and billed."""
+        if not hasattr(self, 'env'):
+            return
+
+        sub_no_date = self.env['subscription.subscription'].create({
+            'partner_id': self.partner.id,
+            'plan_id': self.plan_monthly.id,
+            'date_start': self.today,
+            'state': 'active',
+            'line_ids': [(0, 0, {'product_id': self.product.id, 'quantity': 1.0, 'price_unit': 60.0})],
+        })
+        sub_no_date.next_billing_date = False
+
+        invoices = self.env['subscription.subscription']._cron_generate_recurring_invoices()
+        matching = [inv for inv in invoices if inv.subscription_id == sub_no_date]
+        self.assertTrue(matching, "Active subscription with missing next_billing_date must be billed.")
+        self.assertTrue(sub_no_date.next_billing_date, "Next billing date must be set after billing.")

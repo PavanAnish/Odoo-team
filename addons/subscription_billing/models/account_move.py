@@ -34,16 +34,28 @@ class AccountMove(models.Model):
         for move in self:
             move.is_subscription_invoice = bool(move.subscription_id)
 
-    @api.constrains('subscription_id', 'subscription_billing_date', 'state')
+    @api.model_create_multi
+    def create(self, vals_list):
+        for vals in vals_list:
+            if vals.get('subscription_id') and not vals.get('subscription_billing_date'):
+                vals['subscription_billing_date'] = vals.get('invoice_date') or fields.Date.context_today(self)
+        return super().create(vals_list)
+
+    @api.constrains('subscription_id', 'subscription_billing_date', 'invoice_date', 'state')
     def _check_unique_subscription_billing_cycle(self):
         """Ensure no duplicate invoices exist for the same subscription and billing cycle."""
         for move in self:
-            if move.subscription_id and move.subscription_billing_date and move.state != 'cancel':
+            if move.subscription_id and move.state != 'cancel':
+                cycle_date = move.subscription_billing_date or move.invoice_date
+                if not cycle_date:
+                    continue
                 duplicate = self.search([
                     ('id', '!=', move.id),
                     ('subscription_id', '=', move.subscription_id.id),
-                    ('subscription_billing_date', '=', move.subscription_billing_date),
                     ('state', '!=', 'cancel'),
+                    '|',
+                    ('subscription_billing_date', '=', cycle_date),
+                    ('invoice_date', '=', cycle_date),
                 ], limit=1)
                 if duplicate:
                     raise ValidationError(_(
@@ -52,6 +64,5 @@ class AccountMove(models.Model):
                     ) % (
                         duplicate.name or duplicate.id,
                         move.subscription_id.name,
-                        move.subscription_billing_date,
+                        cycle_date,
                     ))
-
