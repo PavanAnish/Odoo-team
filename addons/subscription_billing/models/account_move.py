@@ -28,6 +28,32 @@ class AccountMove(models.Model):
         store=True,
         index=True,
     )
+    subscription_calculation_details = fields.Text(
+        string='Calculation Snapshot',
+        readonly=True,
+        copy=False,
+        help='JSON snapshot of the invoice calculation at generation time. '
+             'Preserves historical prices, discounts, and tax amounts even if '
+             'product prices or tax rules change later.',
+    )
+    subscription_amount_untaxed = fields.Monetary(
+        string='Subscription Untaxed Amount',
+        readonly=True,
+        copy=False,
+        help='Snapshotted untaxed amount at invoice generation time.',
+    )
+    subscription_amount_tax = fields.Monetary(
+        string='Subscription Tax Amount',
+        readonly=True,
+        copy=False,
+        help='Snapshotted tax amount at invoice generation time.',
+    )
+    subscription_amount_total = fields.Monetary(
+        string='Subscription Total Amount',
+        readonly=True,
+        copy=False,
+        help='Snapshotted total amount at invoice generation time.',
+    )
 
     @api.depends('subscription_id')
     def _compute_is_subscription_invoice(self):
