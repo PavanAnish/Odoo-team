@@ -1,1 +1,17 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+# ── res.partner ───────────────────────────────────────────────────────────────
+# Customers (portal): read-only own partner record (row-level enforced by rule)
+access_res_partner_portal,res.partner.portal,base.model_res_partner,base.group_portal,1,0,0,0
+# Staff: read/write partners (needed for customer management operations)
+access_res_partner_user,res.partner.user,base.model_res_partner,subscription_base.group_subscription_user,1,1,1,0
+# Admin: full partner management
+access_res_partner_manager,res.partner.manager,base.model_res_partner,subscription_base.group_subscription_manager,1,1,1,1
+# ── res.users ─────────────────────────────────────────────────────────────────
+# Customers: read own user record only (row-level enforced by record rule)
+# NO write — customers cannot modify their own groups_id / role
+access_res_users_portal,res.users.portal,base.model_res_users,base.group_portal,1,0,0,0
+# Staff: read own user record (row-level rule limits to own record)
+# NO create/unlink — only admin can manage user accounts
+access_res_users_staff,res.users.staff,base.model_res_users,subscription_base.group_subscription_user,1,0,0,0
+# Admin: full user management
+access_res_users_manager,res.users.manager,base.model_res_users,subscription_base.group_subscription_manager,1,1,1,1
