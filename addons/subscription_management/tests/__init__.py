@@ -8,3 +8,4 @@ from . import test_subscription_creation
 from . import test_lifecycle
 from . import test_pause_resume_closure
 from . import test_renewal
+from . import test_expiration_auto_closure

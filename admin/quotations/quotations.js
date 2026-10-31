@@ -1,4 +1,6 @@
-import { D, S, M, B, confirmD, toast } from '../shared/store.js';
+import { D, S, M, B, confirmD, toast, form } from '../shared/store.js';
+import { convertQuotation } from '../shared/api.js';
+import { loadData } from '../shared/store.js';
 
 export const tot = q => {
   const product = D.products.find(p => p.name === q.product) || { price: 0 };
@@ -20,22 +22,21 @@ export function quo() {
   ];
 }
 
-export function conv(id) {
+export async function conv(id) {
   const q = D.quotes.find(x => x.id === id);
-  confirmD(`Convert ${q.n} to a subscription for ${q.customer}?`, () => {
-    q.st = 'Converted';
-    const product = D.products.find(p => p.name === q.product) || { price: 0 };
-    D.subs.push({
-      id: D.subs.length + 1,
-      n: 'SUB-' + (1001 + D.subs.length),
-      c: q.customer,
-      plan: q.plan,
-      st: 'Confirmed',
-      amt: Math.round(product.price * q.qty),
-      next: '2026-12-01',
-      paused: 0
-    });
-    toast('Subscription created from ' + q.n);
-    if (typeof window.R === 'function') window.R();
+  if (!q) return toast('Quotation not found');
+  confirmD(`Convert ${q.n} to a subscription for ${q.customer}?`, async () => {
+    try {
+      const r = await convertQuotation(q.id);
+      if (r && r.error) {
+        toast('Error: ' + r.error);
+      } else {
+        await loadData();
+        toast('Subscription created from ' + q.n);
+        if (typeof window.R === 'function') window.R();
+      }
+    } catch (e) {
+      toast('Error: ' + e.message);
+    }
   }, 'Convert');
 }

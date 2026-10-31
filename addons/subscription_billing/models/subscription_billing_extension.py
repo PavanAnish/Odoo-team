@@ -335,6 +335,14 @@ class SubscriptionSubscription(models.Model):
                 "Invoices can only be generated for active subscriptions. "
                 "Contract '%s' is currently in '%s' status."
             ) % (self.name, state_label))
+        # 1b. Expiry protection: block billing for expired subscriptions without active renewal
+        today = fields.Date.context_today(self)
+        if self.date_subscription_end and self.date_subscription_end < today:
+            # Allow billing only when the subscription was successfully renewed beyond today
+            if not (self.last_renewal_period_end and self.last_renewal_period_end >= today):
+                raise UserError(_(
+                    "Cannot generate invoice: Subscription '%s' expired on %s and has not been renewed."
+                ) % (self.name, self.date_subscription_end))
 
         if not self.partner_id:
             raise UserError(_("Cannot generate invoice for subscription '%s': no customer is assigned.") % self.name)

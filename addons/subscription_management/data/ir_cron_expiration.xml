@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Subscription: Daily Expiration Check — renew or auto-close expired subscriptions -->
+    <record id="cron_subscription_process_expiration" model="ir.cron">
+        <field name="name">Subscription: Process Expiration and Auto-Closure</field>
+        <field name="model_id" ref="subscription_management.model_subscription_subscription"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_process_subscription_expiration()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="numbercall">-1</field>
+        <field name="active">True</field>
+        <field name="priority">80</field>
+    </record>
+</odoo>

@@ -1,4 +1,5 @@
-import { D, S, M, B, ds, dO, toast, modal, X, confirmD, currentUser, logInvoiceHistory } from '../shared/store.js';
+import { D, S, M, B, ds, dO, toast, modal, X, confirmD, currentUser, logInvoiceHistory, loadData } from '../shared/store.js';
+import { invoiceAction, runBilling as apiBilling } from '../shared/api.js';
 
 export function invs() {
   if (S.inv) {
@@ -37,25 +38,27 @@ export function invs() {
   ];
 }
 
-export function runBilling() {
-  const nextId = Math.max(0, ...D.invoices.map(i => i.id)) + 1;
-  const customers = D.customers.filter(c => c.status === 'Active');
-  const cust = customers[nextId % customers.length] || { name: 'Orbit Foods' };
-  const newInv = {
-    id: nextId,
-    n: `INV-${2040 + nextId}`,
-    c: cust.name,
-    amt: 240,
-    paid: 0,
-    residual: 240,
-    st: 'Draft',
-    due: '2026-11-30',
-    history: []
-  };
-  logInvoiceHistory(newInv, 'Created', null, 'Draft', 'Recurring billing run generated new Draft invoice.');
-  D.invoices.push(newInv);
-  toast(`Billing run complete: Draft invoice ${newInv.n} generated for ${newInv.c}`);
-  if (typeof window.R === 'function') window.R();
+export async function runBilling() {
+  try {
+    const r = await apiBilling();
+    if (r && r.error) {
+      toast('Billing error: ' + r.error);
+    } else {
+      await loadData();
+      toast(`Billing run complete: ${(r && r.invoices_created) || 0} invoice(s) created`);
+      if (typeof window.R === 'function') window.R();
+    }
+  } catch (e) {
+    // Fallback: mock billing when backend unreachable
+    const nextId = Math.max(0, ...D.invoices.map(i => i.id)) + 1;
+    const customers = D.customers.filter(c => c.status === 'Active');
+    const cust = customers[nextId % customers.length] || { name: 'Orbit Foods' };
+    const newInv = { id: nextId, n: `INV-${2040 + nextId}`, c: cust.name, amt: 240, paid: 0, residual: 240, st: 'Draft', due: '2026-11-30', history: [] };
+    logInvoiceHistory(newInv, 'Created', null, 'Draft', 'Recurring billing run generated new Draft invoice.');
+    D.invoices.push(newInv);
+    toast(`Billing run complete (mock): Draft invoice ${newInv.n} generated`);
+    if (typeof window.R === 'function') window.R();
+  }
 }
 
 export function confirmInvoice(id) {
@@ -70,12 +73,21 @@ export function confirmInvoice(id) {
     return toast(`Invalid status transition: Only Draft invoices can be confirmed (current: ${i.st})`);
   }
 
-  confirmD(`Confirm invoice <b>${i.n}</b> for <b>${i.c}</b> (${M(i.amt)})?<br><small class="mut">Once confirmed, invoice is finalized and terms are locked awaiting payment.</small>`, () => {
-    const prev = i.st;
-    i.st = 'Confirmed';
-    logInvoiceHistory(i, 'Confirmed', prev, 'Confirmed', 'Invoice finalized and awaiting payment.');
-    toast(`Invoice ${i.n} confirmed successfully`);
-    if (typeof window.R === 'function') window.R();
+  confirmD(`Confirm invoice <b>${i.n}</b> for <b>${i.c}</b> (${M(i.amt)})?<br><small class="mut">Once confirmed, invoice is finalized and terms are locked awaiting payment.</small>`, async () => {
+    try {
+      const r = await invoiceAction(id, 'confirm');
+      if (r && r.error) { toast('Error: ' + r.error); return; }
+      await loadData();
+      toast(`Invoice ${i.n} confirmed successfully`);
+      if (typeof window.R === 'function') window.R();
+    } catch (e) {
+      // Fallback mock
+      const prev = i.st;
+      i.st = 'Confirmed';
+      logInvoiceHistory(i, 'Confirmed', prev, 'Confirmed', 'Invoice finalized and awaiting payment.');
+      toast(`Invoice ${i.n} confirmed (mock)`);
+      if (typeof window.R === 'function') window.R();
+    }
   }, 'Confirm Invoice');
 }
 
@@ -104,14 +116,22 @@ export function cancelInvoice(id) {
     </div>
   `);
 
-  o.querySelector('#cc_btn').onclick = () => {
+  o.querySelector('#cc_btn').onclick = async () => {
     const reason = o.querySelector('#c_reason').value.trim() || 'Invoice cancelled by user';
-    const prev = i.st;
-    i.st = 'Cancelled';
     X();
-    logInvoiceHistory(i, 'Cancelled', prev, 'Cancelled', reason);
-    toast(`Invoice ${i.n} has been cancelled`);
-    if (typeof window.R === 'function') window.R();
+    try {
+      const r = await invoiceAction(id, 'cancel', null, reason);
+      if (r && r.error) { toast('Error: ' + r.error); return; }
+      await loadData();
+      toast(`Invoice ${i.n} has been cancelled`);
+      if (typeof window.R === 'function') window.R();
+    } catch (e) {
+      const prev = i.st;
+      i.st = 'Cancelled';
+      logInvoiceHistory(i, 'Cancelled', prev, 'Cancelled', reason);
+      toast(`Invoice ${i.n} has been cancelled (mock)`);
+      if (typeof window.R === 'function') window.R();
+    }
   };
 }
 
@@ -167,7 +187,7 @@ export function pay(id) {
   <button class="btn" id="ok">Record Payment</button>
 </div>`);
 
-  o.querySelector('#ok').onclick = () => {
+  o.querySelector('#ok').onclick = async () => {
     const amountVal = +o.querySelector('#pa').value;
     const method = o.querySelector('#pm').value;
     const dateVal = o.querySelector('#pd').value || '2026-10-31';
@@ -247,6 +267,10 @@ export function pay(id) {
     }
 
     X();
+    // Attempt real backend payment record
+    invoiceAction(id, 'pay', amountVal).then(r => {
+      if (r && !r.error) loadData().then(() => { if (typeof window.R === 'function') window.R(); });
+    }).catch(() => {});
     if (typeof window.R === 'function') window.R();
   };
 }
