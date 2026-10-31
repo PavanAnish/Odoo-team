@@ -51,7 +51,7 @@ flowchart TD
 | `subscription_base` | Foundation & Security | *None* | `base`, `mail` |
 | `subscription_auth` | Module 1: Auth & Customers | `subscription_base` | `base`, `portal` |
 | `subscription_catalog` | Module 2: Products, Plans & Taxes | `subscription_base` | `base`, `product` |
-| `subscription_management` | Module 3: Quotations & Subscriptions | `subscription_base`, `subscription_auth`, `subscription_catalog` | `base` |
+| `subscription_management` | Module 3: Quotations & Subscriptions | `subscription_base`, `subscription_auth`, `subscription_catalog` | `base`, `product`, `account` |
 | `subscription_billing` | Module 4: Invoices & Payments | `subscription_base`, `subscription_management` | `base`, `account` |
 | `subscription_reports` | Dedicated Analytics & Pivot | `subscription_base`, `subscription_management`, `subscription_billing` | `base` |
 | `subscription_module_template` | Reusable Scaffold Template | *Standalone* | `base`, `mail` |
@@ -64,8 +64,8 @@ flowchart TD
 |---|---|---|---|
 | `subscription_base` | All Modules | Security groups (`group_subscription_user`, `group_subscription_manager`), root menu (`menu_subscription_root`), audit mixin (`subscription.audit.mixin`). | Common authorization, shared UI menu tree, audit fields (`company_id`, `currency_id`). |
 | `subscription_auth` | `subscription_management` | Customer partner records (`res.partner`) where `is_subscription_customer = True`. | Restricts subscription creation to valid customer accounts. |
-| `subscription_catalog` | `subscription_management` | Subscription plans (`subscription.plan`) and subscription products (`product.template` where `is_subscription_product = True`). | Defines contract recurrence interval, trial periods, and selectable line items. |
-| `subscription_management` | `subscription_billing` | Confirmed subscriptions (`subscription.subscription`), recurring line items (`subscription.subscription.line`), and `next_billing_date`. | Triggers recurring invoice generation when billing date is due. |
+| `subscription_catalog` | `subscription_management` | Subscription plans (`subscription.plan`), subscription products (`product.template`), and discount rules (`subscription.discount`). | Defines contract recurrence interval, availability dates, min quantity, trial periods, product variants, and eligible discounts. |
+| `subscription_management` | `subscription_billing` | Confirmed quotations & active subscriptions (`subscription.subscription`), recurring line items with discounts/taxes (`subscription.subscription.line`), and `next_billing_date`. | Triggers recurring invoice generation when billing date is due. |
 | `subscription_billing` | `subscription_management` | Customer invoices (`account.move`), invoice status (`state`, `payment_state`), and payment reconciliation records. | Displays invoice count and payment statuses directly on the subscription contract. |
 | `subscription_management` + `subscription_billing` | `subscription_reports` | Subscription records and linked invoice/payment amounts. | Materialized reporting view (`subscription.report`) for recurring revenue (MRR/ARR) and churn analytics. |
 

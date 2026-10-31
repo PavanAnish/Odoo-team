@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Discount Views -->
+    <record id="view_subscription_discount_tree" model="ir.ui.view">
+        <field name="name">subscription.discount.tree</field>
+        <field name="model">subscription.discount</field>
+        <field name="arch" type="xml">
+            <tree string="Discount Rules">
+                <field name="code"/>
+                <field name="name"/>
+                <field name="discount_type"/>
+                <field name="discount_value"/>
+                <field name="min_amount"/>
+                <field name="date_start"/>
+                <field name="date_end"/>
+                <field name="usage_count"/>
+                <field name="max_usage"/>
+                <field name="active" widget="boolean_toggle"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="view_subscription_discount_form" model="ir.ui.view">
+        <field name="name">subscription.discount.form</field>
+        <field name="model">subscription.discount</field>
+        <field name="arch" type="xml">
+            <form string="Discount Rule">
+                <sheet>
+                    <widget name="web_ribbon" title="Archived" bg_color="text-bg-danger" invisible="active"/>
+                    <div class="oe_title">
+                        <label for="name"/>
+                        <h1>
+                            <field name="name" placeholder="e.g. Early Bird 10%"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group name="rule_details">
+                            <field name="code"/>
+                            <field name="discount_type"/>
+                            <field name="discount_value"/>
+                            <field name="min_amount"/>
+                            <field name="active" invisible="1"/>
+                        </group>
+                        <group name="validity_details">
+                            <field name="date_start"/>
+                            <field name="date_end"/>
+                            <field name="max_usage"/>
+                            <field name="usage_count"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Internal Notes" name="notes_page">
+                            <field name="notes" placeholder="Promotional campaign conditions, terms, or notes..."/>
+                        </page>
+                    </notebook>
+                </sheet>
+                <div class="oe_chatter">
+                    <field name="message_follower_ids"/>
+                    <field name="message_ids"/>
+                </div>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_subscription_discount_search" model="ir.ui.view">
+        <field name="name">subscription.discount.search</field>
+        <field name="model">subscription.discount</field>
+        <field name="arch" type="xml">
+            <search string="Search Discounts">
+                <field name="name" string="Name or Code" filter_domain="['|', ('name', 'ilike', self), ('code', 'ilike', self)]"/>
+                <separator/>
+                <filter string="Active" name="filter_active" domain="[('active', '=', True)]"/>
+                <filter string="Percentage" name="filter_percent" domain="[('discount_type', '=', 'percent')]"/>
+                <filter string="Fixed Amount" name="filter_fixed" domain="[('discount_type', '=', 'fixed')]"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_subscription_discounts" model="ir.actions.act_window">
+        <field name="name">Discounts &amp; Coupons</field>
+        <field name="res_model">subscription.discount</field>
+        <field name="view_mode">tree,form</field>
+        <field name="search_view_id" ref="view_subscription_discount_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create a discount or promotional rule!
+            </p>
+        </field>
+    </record>
+
+    <menuitem id="menu_subscription_discounts"
+              name="Discounts"
+              parent="subscription_base.menu_subscription_catalog_menu"
+              action="action_subscription_discounts"
+              sequence="30"/>
+</odoo>

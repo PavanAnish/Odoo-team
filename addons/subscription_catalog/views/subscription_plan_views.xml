@@ -11,6 +11,9 @@
                 <field name="billing_interval"/>
                 <field name="billing_period"/>
                 <field name="trial_period_days"/>
+                <field name="min_quantity"/>
+                <field name="date_start"/>
+                <field name="date_end"/>
                 <field name="company_id" groups="base.group_multi_company"/>
                 <field name="active" widget="boolean_toggle"/>
             </tree>
@@ -39,9 +42,12 @@
                                 <field name="billing_interval" class="oe_inline"/>
                                 <field name="billing_period" class="oe_inline"/>
                             </div>
+                            <field name="min_quantity"/>
                         </group>
                         <group name="plan_rules">
                             <field name="trial_period_days"/>
+                            <field name="date_start"/>
+                            <field name="date_end"/>
                             <field name="company_id" groups="base.group_multi_company"/>
                         </group>
                     </group>

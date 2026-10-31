@@ -11,7 +11,7 @@
 Subscription Catalog (Module 2)
 ===============================
 Configures subscription recurring plans, pricing intervals, product catalog
-extensions, and leverages Odoo native tax and discount engines.
+extensions, discount rules, and leverages Odoo native tax engines.
     """,
     'author': 'Hackathon Team',
     'website': 'https://github.com/PavanAnish',
@@ -24,6 +24,7 @@ extensions, and leverages Odoo native tax and discount engines.
     'data': [
         'security/ir.model.access.csv',
         'views/subscription_plan_views.xml',
+        'views/subscription_discount_views.xml',
         'views/product_template_views.xml',
     ],
     'demo': [

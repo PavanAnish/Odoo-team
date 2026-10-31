@@ -15,7 +15,7 @@ class TestSubscriptionManagement(TransactionCase):
     """Test subscription creation and lifecycle transitions."""
 
     def test_01_create_subscription(self):
-        """Test initial draft state of a subscription."""
+        """Test initial draft state of a quotation and lifecycle activation."""
         if not hasattr(self, 'env'):
             return
         partner = self.env['res.partner'].create({
@@ -28,10 +28,22 @@ class TestSubscriptionManagement(TransactionCase):
             'billing_interval': 1,
             'billing_period': 'monthly',
         })
+        product = self.env['product.product'].create({
+            'name': 'Base Test Service',
+            'is_subscription_product': True,
+            'list_price': 1000.0,
+        })
         sub = self.env['subscription.subscription'].create({
             'partner_id': partner.id,
             'plan_id': plan.id,
+            'line_ids': [(0, 0, {
+                'product_id': product.id,
+                'quantity': 1.0,
+                'price_unit': 1000.0,
+            })],
         })
         self.assertEqual(sub.state, 'draft')
         sub.action_confirm()
+        self.assertEqual(sub.state, 'confirmed')
+        sub.action_activate()
         self.assertEqual(sub.state, 'active')
