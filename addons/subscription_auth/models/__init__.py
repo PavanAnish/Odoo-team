@@ -2,3 +2,4 @@
 # Part of Odoo Subscription Management System.
 
 from . import res_partner
+from . import res_users
