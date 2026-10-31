@@ -1,14 +1,66 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Extend account.move form view with subscription details -->
+    <!-- Extend account.move form view with subscription details, statusbar, lifecycle buttons, and history tab -->
     <record id="view_move_form_inherit_subscription" model="ir.ui.view">
         <field name="name">account.move.form.inherit.subscription</field>
         <field name="model">account.move</field>
         <field name="inherit_id" ref="account.view_move_form"/>
         <field name="arch" type="xml">
+            <!-- Header buttons for invoice lifecycle -->
+            <xpath expr="//header" position="inside">
+                <button name="action_confirm"
+                        string="Confirm Invoice"
+                        type="object"
+                        class="oe_highlight"
+                        invisible="invoice_status != 'draft'"/>
+                <button name="action_mark_paid"
+                        string="Record Payment"
+                        type="object"
+                        class="oe_highlight"
+                        invisible="invoice_status != 'confirmed'"/>
+                <button name="action_send_invoice"
+                        string="Send by Email"
+                        type="object"
+                        invisible="invoice_status not in ('confirmed', 'paid')"/>
+                <button name="action_download_invoice"
+                        string="Download PDF"
+                        type="object"
+                        invisible="invoice_status == 'cancel'"/>
+                <button name="action_print_invoice"
+                        string="Print"
+                        type="object"
+                        invisible="invoice_status == 'cancel'"/>
+                <button name="action_cancel"
+                        string="Cancel Invoice"
+                        type="object"
+                        invisible="invoice_status not in ('draft', 'confirmed')"/>
+                <field name="invoice_status"
+                       widget="statusbar"
+                       statusbar_visible="draft,confirmed,paid"/>
+            </xpath>
+
+            <!-- Subscription Reference and Status Details -->
             <xpath expr="//field[@name='ref']" position="after">
                 <field name="subscription_id" readonly="1" invisible="not subscription_id"/>
                 <field name="subscription_billing_date" readonly="1" invisible="not subscription_id"/>
+                <field name="invoice_sent" readonly="1" invisible="not invoice_sent"/>
+                <field name="invoice_sent_date" readonly="1" invisible="not invoice_sent"/>
+            </xpath>
+
+            <!-- Status History Notebook Page -->
+            <xpath expr="//notebook" position="inside">
+                <page string="Lifecycle History" name="lifecycle_history">
+                    <field name="history_ids" readonly="1">
+                        <tree string="Status History" default_order="timestamp desc" create="0" delete="0" edit="0">
+                            <field name="timestamp"/>
+                            <field name="user_name" string="Actor"/>
+                            <field name="action"/>
+                            <field name="previous_status" widget="badge"/>
+                            <field name="current_status" widget="badge"/>
+                            <field name="details"/>
+                        </tree>
+                    </field>
+                </page>
             </xpath>
         </field>
     </record>
@@ -54,7 +106,7 @@
         <field name="res_model">account.move</field>
         <field name="view_mode">tree,kanban,form</field>
         <field name="domain">[('move_type', '=', 'out_invoice'), ('subscription_id', '!=', False)]</field>
-        <field name="context">{'default_move_type': 'out_invoice'}</field>
+        <field name="context">{'default_move_type': 'out_invoice', 'default_invoice_status': 'draft'}</field>
     </record>
 
     <menuitem id="menu_subscription_invoices"

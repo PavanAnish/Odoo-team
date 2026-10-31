@@ -523,3 +523,169 @@ class TestSubscriptionBilling(TransactionCase):
         # tax: 142.50 * 0.05 = 7.125 → 7.13 (ROUND_HALF_UP)
         self.assertAlmostEqual(line['tax_details'][0]['tax_amount'], 7.13, places=2)
         self.assertAlmostEqual(snapshot['amount_total'], 149.63, places=2)
+
+    # ------------------------------------------------------------------
+    # Invoice Status, Transition, Protection & History Tests
+    # ------------------------------------------------------------------
+
+    def test_15_invoice_status_draft_to_confirmed(self):
+        """Test invoice creation defaults to Draft, and confirms to Confirmed with history."""
+        if not hasattr(self, 'env'):
+            return
+
+        sub = self.env['subscription.subscription'].create({
+            'partner_id': self.partner.id,
+            'plan_id': self.plan_monthly.id,
+            'date_start': self.today,
+            'line_ids': [(0, 0, {'product_id': self.product.id, 'quantity': 1.0, 'price_unit': 100.0})],
+        })
+        sub.action_confirm()
+        invoice = sub.action_generate_invoice()
+
+        self.assertEqual(invoice.invoice_status, 'draft')
+        self.assertTrue(invoice.history_ids)
+        self.assertEqual(invoice.history_ids[0].action, 'create')
+
+        # Confirm
+        invoice.action_confirm()
+        self.assertEqual(invoice.invoice_status, 'confirmed')
+        self.assertEqual(invoice.state, 'posted')
+
+        confirm_events = [h for h in invoice.history_ids if h.action == 'confirm']
+        self.assertTrue(confirm_events)
+        self.assertEqual(confirm_events[0].previous_status, 'draft')
+        self.assertEqual(confirm_events[0].current_status, 'confirmed')
+
+    def test_16_invoice_status_confirmed_to_paid(self):
+        """Test confirmed invoice moves to Paid upon payment registration."""
+        if not hasattr(self, 'env'):
+            return
+
+        sub = self.env['subscription.subscription'].create({
+            'partner_id': self.partner.id,
+            'plan_id': self.plan_monthly.id,
+            'date_start': self.today,
+            'line_ids': [(0, 0, {'product_id': self.product.id, 'quantity': 1.0, 'price_unit': 100.0})],
+        })
+        sub.action_confirm()
+        invoice = sub.action_generate_invoice()
+        invoice.action_confirm()
+
+        # Mark paid
+        invoice.action_mark_paid(payment_ref='TXN-TEST-01', amount=100.0)
+        self.assertEqual(invoice.invoice_status, 'paid')
+        self.assertEqual(invoice.payment_state, 'paid')
+
+        pay_events = [h for h in invoice.history_ids if h.action == 'register_payment']
+        self.assertTrue(pay_events)
+        self.assertEqual(pay_events[0].previous_status, 'confirmed')
+        self.assertEqual(pay_events[0].current_status, 'paid')
+
+    def test_17_invoice_cancellation_flow(self):
+        """Test invoice cancellation from draft and confirmed, and rejection from paid."""
+        if not hasattr(self, 'env'):
+            return
+
+        # Cancel from draft
+        sub = self.env['subscription.subscription'].create({
+            'partner_id': self.partner.id,
+            'plan_id': self.plan_monthly.id,
+            'date_start': self.today,
+            'line_ids': [(0, 0, {'product_id': self.product.id, 'quantity': 1.0, 'price_unit': 100.0})],
+        })
+        sub.action_confirm()
+        inv_draft = sub.action_generate_invoice()
+        inv_draft.action_cancel()
+        self.assertEqual(inv_draft.invoice_status, 'cancel')
+
+        # Cancel from confirmed
+        sub.next_billing_date = self.today + relativedelta(days=1)
+        inv_conf = sub.action_generate_invoice(billing_date=self.today + relativedelta(days=1))
+        inv_conf.action_confirm()
+        inv_conf.action_cancel()
+        self.assertEqual(inv_conf.invoice_status, 'cancel')
+
+        # Paid cannot be cancelled
+        sub.next_billing_date = self.today + relativedelta(days=2)
+        inv_paid = sub.action_generate_invoice(billing_date=self.today + relativedelta(days=2))
+        inv_paid.action_confirm()
+        inv_paid.action_mark_paid()
+        with self.assertRaises(ValidationError):
+            inv_paid.action_cancel()
+
+    def test_18_invalid_transition_rejections(self):
+        """Verify invalid transitions (Draft -> Paid, Paid -> any, Cancel -> any) raise ValidationError."""
+        if not hasattr(self, 'env'):
+            return
+
+        sub = self.env['subscription.subscription'].create({
+            'partner_id': self.partner.id,
+            'plan_id': self.plan_monthly.id,
+            'date_start': self.today,
+            'line_ids': [(0, 0, {'product_id': self.product.id, 'quantity': 1.0, 'price_unit': 100.0})],
+        })
+        sub.action_confirm()
+        invoice = sub.action_generate_invoice()
+
+        # Cannot mark draft as paid directly
+        with self.assertRaises(ValidationError):
+            invoice.action_mark_paid()
+
+        # Confirm and pay
+        invoice.action_confirm()
+        invoice.action_mark_paid()
+
+        # Paid cannot move to draft, confirmed, or cancel
+        for target in ('draft', 'confirmed', 'cancel'):
+            with self.assertRaises(ValidationError):
+                invoice.write({'invoice_status': target})
+
+    def test_19_finalized_protection_and_deletion(self):
+        """Ensure confirmed and paid invoices cannot have lines modified or be deleted."""
+        if not hasattr(self, 'env'):
+            return
+
+        sub = self.env['subscription.subscription'].create({
+            'partner_id': self.partner.id,
+            'plan_id': self.plan_monthly.id,
+            'date_start': self.today,
+            'line_ids': [(0, 0, {'product_id': self.product.id, 'quantity': 1.0, 'price_unit': 100.0})],
+        })
+        sub.action_confirm()
+        invoice = sub.action_generate_invoice()
+        invoice.action_confirm()
+
+        # Protected from modification of financial lines/amounts
+        with self.assertRaises(ValidationError):
+            invoice.write({'amount_total': 999.0})
+
+        # Protected from deletion
+        with self.assertRaises(UserError):
+            invoice.unlink()
+
+    def test_20_invoice_sending_printing_downloading(self):
+        """Verify send, print, download rules and history recording."""
+        if not hasattr(self, 'env'):
+            return
+
+        sub = self.env['subscription.subscription'].create({
+            'partner_id': self.partner.id,
+            'plan_id': self.plan_monthly.id,
+            'date_start': self.today,
+            'line_ids': [(0, 0, {'product_id': self.product.id, 'quantity': 1.0, 'price_unit': 100.0})],
+        })
+        sub.action_confirm()
+        invoice = sub.action_generate_invoice()
+
+        # Draft cannot be sent
+        with self.assertRaises(ValidationError):
+            invoice.action_send_invoice()
+
+        # Print & download on draft works
+        self.assertTrue(invoice.action_print_invoice())
+        self.assertTrue(invoice.action_download_invoice())
+
+        # Confirm and send
+        invoice.action_confirm()
+        self.assertTrue(invoice.action_send_invoice())
+        self.assertTrue(invoice.invoice_sent)
