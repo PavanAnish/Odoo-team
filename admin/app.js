@@ -1,6 +1,7 @@
 import {
   $, M, TODAY, BC, B, IC, NAV, slug, D, S, ds, dO,
-  toast, modal, X, confirmD, form, del, tog, crud
+  toast, modal, X, confirmD, form, del, tog, crud,
+  currentUser, logInvoiceHistory
 } from './shared/store.js';
 
 import { dash } from './dashboard/dashboard.js';
@@ -11,7 +12,11 @@ import { taxesView } from './taxes/taxes.js';
 import { discountsView } from './discounts/discounts.js';
 import { quo, conv } from './quotations/quotations.js';
 import { subs, subD } from './subscriptions/subscriptions.js';
-import { invs, pay, invD } from './invoices/invoices.js';
+import {
+  invs, pay, invD,
+  confirmInvoice, cancelInvoice, sendInvoice,
+  printInvoice, downloadInvoice, deleteInvoice, runBilling
+} from './invoices/invoices.js';
 
 // Router mapping
 export const P = {
@@ -116,6 +121,15 @@ window.crud = crud;
 window.cust = cust;
 window.conv = conv;
 window.pay = pay;
+window.confirmInvoice = confirmInvoice;
+window.cancelInvoice = cancelInvoice;
+window.sendInvoice = sendInvoice;
+window.printInvoice = printInvoice;
+window.downloadInvoice = downloadInvoice;
+window.deleteInvoice = deleteInvoice;
+window.runBilling = runBilling;
+window.currentUser = currentUser;
+window.logInvoiceHistory = logInvoiceHistory;
 window.P = P;
 window.R = R;
 window.go = go;

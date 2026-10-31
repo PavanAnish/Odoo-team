@@ -19,6 +19,21 @@ if 'odoo' not in sys.modules:
             def __init__(self, *args, **kwargs):
                 pass
 
+            @staticmethod
+            def context_today(*args, **kwargs):
+                from datetime import date
+                return date.today()
+
+            @staticmethod
+            def today(*args, **kwargs):
+                from datetime import date
+                return date.today()
+
+            @staticmethod
+            def now(*args, **kwargs):
+                from datetime import datetime
+                return datetime.now()
+
         for field_type in [
             'Boolean', 'Char', 'Integer', 'Float', 'Monetary',
             'Date', 'Datetime', 'Text', 'Html', 'Selection',
@@ -45,8 +60,12 @@ if 'odoo' not in sys.modules:
         class ValidationError(Exception):
             pass
 
+        class AccessError(Exception):
+            pass
+
         odoo_mock.exceptions.UserError = UserError
         odoo_mock.exceptions.ValidationError = ValidationError
+        odoo_mock.exceptions.AccessError = AccessError
 
         import unittest
         class MockTransactionCase(unittest.TestCase):
@@ -54,6 +73,14 @@ if 'odoo' not in sys.modules:
 
         odoo_mock.tests.common.TransactionCase = MockTransactionCase
         odoo_mock.tests.common.tagged = lambda *args: lambda cls: cls
+
+        odoo_mock.http = MagicMock()
+        sys.modules['odoo.http'] = odoo_mock.http
+        odoo_addons_mock = MagicMock()
+        sys.modules['odoo.addons'] = odoo_addons_mock
+        sys.modules['odoo.addons.portal'] = MagicMock()
+        sys.modules['odoo.addons.portal.controllers'] = MagicMock()
+        sys.modules['odoo.addons.portal.controllers.portal'] = MagicMock()
 
         sys.modules['odoo'] = odoo_mock
         sys.modules['odoo.api'] = odoo_mock.api

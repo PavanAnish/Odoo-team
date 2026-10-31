@@ -5,7 +5,7 @@ export const TODAY = new Date('2026-10-31');
 export const BC = {
   Active: 'g', Paid: 'g', Confirmed: 'g', Converted: 'g',
   Draft: 's', Quotation: 'a', Pending: 'a', Paused: 'a',
-  Overdue: 'r', Closed: 's', Inactive: 's', Sent: 'a'
+  Overdue: 'r', Closed: 's', Inactive: 's', Sent: 'a', Cancelled: 's'
 };
 
 export const B = s => `<span class="bd ${BC[s] || 's'}">${s}</span>`;
@@ -74,19 +74,60 @@ export const D = {
   ].map((r, i) => ({ id: i + 1, n: r[0], c: r[1], plan: r[2], st: r[3], amt: r[4], next: r[5], paused: 0 })),
 
   invoices: [
-    ['INV-2041', 'Northwind Co.', 2832, 'Paid', '2026-10-05'],
-    ['INV-2042', 'Lumen Labs', 283, 'Confirmed', '2026-11-05'],
-    ['INV-2043', 'Harbor & Pine', 116, 'Confirmed', '2026-10-22'],
-    ['INV-2044', 'Orbit Foods', 171, 'Confirmed', '2026-10-12'],
-    ['INV-2045', 'Kite Studio', 71, 'Draft', '2026-11-30'],
-    ['INV-2046', 'Northwind Co.', 2832, 'Draft', '2026-11-15']
-  ].map((r, i) => ({ id: i + 1, n: r[0], c: r[1], amt: r[2], st: r[3], due: r[4] }))
+    ['INV-2041', 'Northwind Co.', 2832, 'Paid', '2026-10-05', [
+      { t: '2026-10-01 09:15', a: 'System', act: 'Created', from: null, to: 'Draft', d: 'Generated from monthly billing run' },
+      { t: '2026-10-02 10:30', a: 'Admin User', act: 'Confirmed', from: 'Draft', to: 'Confirmed', d: 'Invoice confirmed and locked' },
+      { t: '2026-10-02 10:35', a: 'Admin User', act: 'Sent', from: 'Confirmed', to: 'Confirmed', d: 'Sent to ava@northwind.io' },
+      { t: '2026-10-05 14:00', a: 'Admin User', act: 'Payment Recorded', from: 'Confirmed', to: 'Paid', d: 'Full payment of ,832 recorded via Bank transfer (Ref: TXN-4491)' }
+    ]],
+    ['INV-2042', 'Lumen Labs', 283, 'Confirmed', '2026-11-05', [
+      { t: '2026-10-15 08:30', a: 'System', act: 'Created', from: null, to: 'Draft', d: 'Generated from monthly billing run' },
+      { t: '2026-10-16 11:20', a: 'Admin User', act: 'Confirmed', from: 'Draft', to: 'Confirmed', d: 'Invoice confirmed and locked' },
+      { t: '2026-10-16 11:22', a: 'Admin User', act: 'Sent', from: 'Confirmed', to: 'Confirmed', d: 'Sent to jo@lumen.dev' }
+    ]],
+    ['INV-2043', 'Harbor & Pine', 116, 'Confirmed', '2026-10-22', [
+      { t: '2026-10-01 09:00', a: 'System', act: 'Created', from: null, to: 'Draft', d: 'Generated from weekly billing run' },
+      { t: '2026-10-02 14:10', a: 'Admin User', act: 'Confirmed', from: 'Draft', to: 'Confirmed', d: 'Invoice confirmed and locked' }
+    ]],
+    ['INV-2044', 'Orbit Foods', 171, 'Confirmed', '2026-10-12', [
+      { t: '2026-09-20 10:00', a: 'System', act: 'Created', from: null, to: 'Draft', d: 'Generated from monthly billing run' },
+      { t: '2026-09-22 16:45', a: 'Admin User', act: 'Confirmed', from: 'Draft', to: 'Confirmed', d: 'Invoice confirmed and locked' }
+    ]],
+    ['INV-2045', 'Kite Studio', 71, 'Draft', '2026-11-30', [
+      { t: '2026-10-28 11:00', a: 'System', act: 'Created', from: null, to: 'Draft', d: 'Draft invoice created' }
+    ]],
+    ['INV-2046', 'Northwind Co.', 2832, 'Draft', '2026-11-15', [
+      { t: '2026-10-30 16:30', a: 'System', act: 'Created', from: null, to: 'Draft', d: 'Draft invoice created' }
+    ]]
+  ].map((r, i) => ({ id: i + 1, n: r[0], c: r[1], amt: r[2], st: r[3], due: r[4], history: r[5] || [] }))
 };
 
 export const S = { q: {}, sort: {}, tab: 'All', view: 'table', sel: null, rev: 'Month', view2: 'table', qt: 'Quotations', inv: null };
 
-export const ds = i => i.st !== 'Paid' && i.st !== 'Draft' && new Date(i.due) < TODAY ? 'Overdue' : i.st;
+export const ds = i => i.st !== 'Paid' && i.st !== 'Draft' && i.st !== 'Cancelled' && new Date(i.due) < TODAY ? 'Overdue' : i.st;
 export const dO = i => Math.floor((TODAY - new Date(i.due)) / 864e5);
+
+export const currentUser = {
+  name: 'Admin User',
+  email: 'admin@odoo-team.local',
+  role: 'Billing Administrator',
+  isAuthorized: true
+};
+
+export function logInvoiceHistory(inv, action, fromStatus, toStatus, details = '') {
+  if (!inv.history) inv.history = [];
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const tStr = now.getFullYear() + "-" + pad(now.getMonth() + 1) + "-" + pad(now.getDate()) + " " + pad(now.getHours()) + ":" + pad(now.getMinutes());
+  inv.history.push({
+    t: tStr,
+    a: currentUser.name,
+    act: action,
+    from: fromStatus,
+    to: toStatus,
+    d: details
+  });
+}
 
 export function toast(m) {
   const e = document.createElement('div');
